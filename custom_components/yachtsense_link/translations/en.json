@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to YachtSense Link",
+        "description": "Enter the web-interface login for your Raymarine YachtSense Link router.",
+        "data": {
+          "host": "IP address or hostname",
+          "username": "Username",
+          "password": "Password",
+          "update_interval": "Poll interval (seconds)"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure YachtSense Link",
+        "data": {
+          "host": "IP address or hostname",
+          "username": "Username",
+          "password": "Password",
+          "update_interval": "Poll interval (seconds)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate YachtSense Link",
+        "description": "The router at {host} rejected the saved login. Re-enter its web-interface credentials.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to reach the router. Check the IP address and that it is on the network.",
+      "invalid_auth": "Login rejected. Check the username and password.",
+      "rate_limited": "Too many failed logins; the router is temporarily locked out. Wait a minute and try again.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This YachtSense Link is already configured.",
+      "reconfigure_successful": "Reconfiguration was successful.",
+      "reauth_successful": "Re-authentication was successful.",
+      "wrong_device": "The credentials are for a different YachtSense Link than the one already configured."
+    }
+  }
+}
