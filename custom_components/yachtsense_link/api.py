@@ -1,0 +1,179 @@
+# Copyright (c) 2026 Kenneth Baker <bakerkj@umich.edu>
+# All rights reserved.
+
+"""Async client for the Raymarine YachtSense Link router web API.
+
+The router runs a GoAhead web server: a form ``POST /action/login`` yields a
+session cookie, then everything is served through a single JSON-RPC endpoint
+``POST /action/action``. Sessions expire (error code -99), so calls re-login
+once and retry.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from typing import Any
+
+import aiohttp
+
+_LOGGER = logging.getLogger(__name__)
+
+# Router-side auth-expiry RPC error code.
+_AUTH_EXPIRED_CODE = -99
+
+# After a failed login, coalesce further login attempts for this long so a burst
+# of concurrent expired calls doesn't fire multiple credential posts (which trips
+# the router's login rate-limiter). Kept well under the minimum poll interval so
+# the next cycle still retries.
+_LOGIN_RETRY_COOLDOWN = 5.0
+
+
+class YsError(Exception):
+    """The router could not be reached or returned something unusable."""
+
+
+class YsAuthError(YsError):
+    """The router rejected our credentials or session."""
+
+
+class YsLockoutError(YsAuthError):
+    """The router is rate-limiting logins; back off before retrying."""
+
+
+def new_cookie_jar() -> aiohttp.CookieJar:
+    """A cookie jar that keeps cookies for a bare-IP host.
+
+    aiohttp's default jar silently drops cookies for IP-address hosts, which
+    would break the router's session entirely.
+    """
+    return aiohttp.CookieJar(unsafe=True)
+
+
+class YachtSenseLinkApi:
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        host: str,
+        username: str,
+        password: str,
+        timeout: float = 10.0,
+    ) -> None:
+        self._session = session
+        self._base = f"http://{host}"
+        self._user = username
+        self._password = password
+        self._timeout = aiohttp.ClientTimeout(total=timeout)
+        self._logged_in = False
+        self._login_lock = asyncio.Lock()
+        self._last_login_error: YsError | None = None
+        self._last_login_at = 0.0
+
+    async def aclose(self) -> None:
+        """Close the underlying HTTP session."""
+        await self._session.close()
+
+    async def login(self) -> None:
+        if self._logged_in:
+            return
+        # Serialize logins so concurrent calls don't fire multiple credential
+        # posts (which would trip the router's login rate-limiter).
+        async with self._login_lock:
+            if self._logged_in:
+                return
+            # Coalesce a burst of concurrent re-logins after a failure: the six
+            # gathered RPCs can all hit an expired session at once. The first
+            # attempt posts; the rest re-raise the cached error until a short
+            # cooldown passes, so we never hammer the router's login endpoint.
+            if (
+                self._last_login_error is not None
+                and time.monotonic() - self._last_login_at < _LOGIN_RETRY_COOLDOWN
+            ):
+                raise self._last_login_error
+            try:
+                await self._do_login()
+            except YsError as exc:
+                self._last_login_error = exc
+                self._last_login_at = time.monotonic()
+                raise
+            self._last_login_error = None
+
+    async def _do_login(self) -> None:
+        # Prime the session cookie, then post credentials (plaintext, form-encoded;
+        # the router does no client-side hashing for login).
+        try:
+            async with self._session.get(
+                f"{self._base}/index.html", timeout=self._timeout
+            ):
+                pass
+            async with self._session.post(
+                f"{self._base}/action/login",
+                data={
+                    "username": self._user,
+                    "password": self._password,
+                    "login_mode": "Active",
+                },
+                headers={"Time-Stamp": str(int(time.time() * 1000)), "Time-Zone": "0"},
+                timeout=self._timeout,
+            ) as resp:
+                doc = await resp.json(content_type=None)
+        except aiohttp.ClientError as exc:
+            raise YsError(f"login request failed: {exc}") from exc
+        except ValueError as exc:
+            raise YsAuthError(f"unexpected login response: {exc}") from exc
+
+        res = doc.get("result", {}) if isinstance(doc, dict) else {}
+        if str(res.get("login")) != "1":
+            left = res.get("left_seconds")
+            if left and str(left) != "0":
+                raise YsLockoutError(
+                    f"login rate-limited: {res.get('try_times')} tries left, "
+                    f"wait {left}s"
+                )
+            raise YsAuthError("router rejected credentials (check username/password)")
+        self._logged_in = True
+        _LOGGER.debug("Authenticated to YachtSense Link at %s", self._base)
+
+    async def call(self, method: str, params: dict[str, Any] | None = None) -> Any:
+        if not self._logged_in:
+            await self.login()
+        try:
+            return await self._rpc(method, params)
+        except YsAuthError:
+            _LOGGER.debug("Session expired; re-authenticating")
+            self._logged_in = False
+            await self.login()
+            return await self._rpc(method, params)
+
+    async def _rpc(self, method: str, params: dict[str, Any] | None) -> Any:
+        payload = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params or {},
+            "id": "1",
+        }
+        try:
+            async with self._session.post(
+                f"{self._base}/action/action", json=payload, timeout=self._timeout
+            ) as resp:
+                doc = await resp.json(content_type=None)
+        except aiohttp.ClientError as exc:
+            raise YsError(f"{method}: request failed: {exc}") from exc
+        except ValueError as exc:
+            raise YsError(f"{method}: invalid JSON: {exc}") from exc
+
+        if isinstance(doc, dict) and doc.get("error"):
+            err = doc["error"]
+            # Usually an object; guard against a bare string/bool so a real error
+            # is surfaced as YsError rather than mis-read as auth-expiry / code 0.
+            if isinstance(err, dict):
+                raw = err.get("code")
+                try:
+                    code = int(raw) if isinstance(raw, (int, str)) else 0
+                except ValueError:
+                    code = 0
+                if code == _AUTH_EXPIRED_CODE:
+                    raise YsAuthError(f"{method}: session expired")
+            raise YsError(f"{method}: RPC error {err}")
+        return doc.get("result") if isinstance(doc, dict) else None

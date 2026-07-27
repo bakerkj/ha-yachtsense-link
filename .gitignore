@@ -1,0 +1,9 @@
+ha-config/
+yachtsense_link.tgz
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+node_modules/
+.venv/
+*.egg-info/
