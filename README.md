@@ -37,12 +37,25 @@ granularity). WiFi-uplink data volume is not exposed by the router at all.
 
 ## Installation
 
-1. Copy `custom_components/yachtsense_link` to your Home Assistant
-   `config/custom_components/` directory (or install via HACS as a custom repo).
-2. Restart Home Assistant.
-3. Settings → Devices & Services → **Add Integration** → _YachtSense Link_.
-4. Enter the router's IP address, web-interface username (default `admin`) and
-   password, and a poll interval (default 60 s).
+### HACS (recommended)
+
+This integration is installed by adding it to HACS as a custom repository:
+
+1. In Home Assistant, open **HACS**, then the **⋮** menu (top-right) → **Custom
+   repositories**.
+2. Add `https://github.com/bakerkj/ha-yachtsense-link` with type
+   **Integration**, and click **Add**.
+3. Search HACS for **YachtSense Link** and **Download** it.
+4. **Restart Home Assistant.**
+5. Go to **Settings → Devices & Services → Add Integration → _YachtSense Link_**
+   and enter the router's IP address or hostname, web-interface username
+   (default `admin`), password, and a poll interval (default 60 s).
+
+### Manual
+
+Alternatively, copy `custom_components/yachtsense_link/` into your Home
+Assistant `config/custom_components/` directory, restart Home Assistant, then
+add the integration as in step 5 above.
 
 ## Development
 
