@@ -31,7 +31,6 @@ class FakeApi:
     async def login(self):
         if self.login_error is not None:
             raise self.login_error
-        return None
 
     async def call(self, method, params=None):
         if method in self.fail_auth:
