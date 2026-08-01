@@ -6,13 +6,9 @@
     ":semanticCommits",
     ":dependencyDashboard"
   ],
-  "schedule": [
-    "before 6pm on friday"
-  ],
+  "schedule": ["before 6pm on friday"],
   "timezone": "America/New_York",
-  "assignees": [
-    "bakerkj"
-  ],
+  "assignees": ["bakerkj"],
   "pre-commit": {
     "enabled": true
   },
@@ -20,9 +16,7 @@
     {
       "customType": "regex",
       "description": "GitHub runner versions in shell scripts and YAML within workflows",
-      "managerFilePatterns": [
-        "/.github/workflows/.+\\.ya?ml$/"
-      ],
+      "managerFilePatterns": ["/.github/workflows/.+\\.ya?ml$/"],
       "matchStrings": [
         "runner=\"(?<depName>ubuntu|macos|windows)-(?<currentValue>[\\w.-]+)\"",
         "runs-on:\\s*(?<depName>ubuntu|macos|windows)-(?<currentValue>[\\w.-]+)"
@@ -32,9 +26,7 @@
     {
       "customType": "regex",
       "description": "npm packages pinned via pre-commit additional_dependencies",
-      "managerFilePatterns": [
-        "/^\\.pre-commit-config\\.yaml$/"
-      ],
+      "managerFilePatterns": ["/^\\.pre-commit-config\\.yaml$/"],
       "matchStrings": [
         "\"(?<depName>@?[^\"@\\s]+)@(?<currentValue>[^\"\\s]+)\""
       ],
@@ -44,12 +36,8 @@
     {
       "customType": "regex",
       "description": "uv tool required-version pin in pyproject.toml [tool.uv]",
-      "managerFilePatterns": [
-        "/(^|/)pyproject\\.toml$/"
-      ],
-      "matchStrings": [
-        "required-version\\s*=\\s*\"(?<currentValue>[^\"]+)\""
-      ],
+      "managerFilePatterns": ["/(^|/)pyproject\\.toml$/"],
+      "matchStrings": ["required-version\\s*=\\s*\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "uv",
       "datasourceTemplate": "pypi",
       "versioningTemplate": "pep440"
@@ -57,15 +45,11 @@
   ],
   "packageRules": [
     {
-      "matchManagers": [
-        "github-actions"
-      ],
+      "matchManagers": ["github-actions"],
       "groupName": "github-actions"
     },
     {
-      "matchManagers": [
-        "pre-commit"
-      ],
+      "matchManagers": ["pre-commit"],
       "groupName": "pre-commit hooks"
     },
     {
@@ -82,95 +66,51 @@
     },
     {
       "description": "Actions are CI-only here: HACS ships the repo source, so nothing an action does reaches a user. Re-enables github-tags, denied above.",
-      "matchManagers": [
-        "github-actions"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "digest",
-        "pin",
-        "pinDigest"
-      ],
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
       "minimumReleaseAge": "3 days",
       "automerge": true
     },
     {
       "description": "Lint and format tooling. Never shipped.",
-      "matchManagers": [
-        "pre-commit"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "digest",
-        "pin",
-        "pinDigest"
-      ],
+      "matchManagers": ["pre-commit"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
       "minimumReleaseAge": "3 days",
       "automerge": true
     },
     {
       "description": "npm packages pinned in .pre-commit-config.yaml additional_dependencies. These come from the custom regex manager, which renovate names custom.regex, so the pre-commit rule above does not reach them.",
-      "matchManagers": [
-        "custom.regex"
-      ],
-      "matchDatasources": [
-        "npm"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
+      "matchManagers": ["custom.regex"],
+      "matchDatasources": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
       "minimumReleaseAge": "3 days",
       "automerge": true
     },
     {
       "description": "CI runner images.",
-      "matchDatasources": [
-        "github-runners"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "pin"
-      ],
+      "matchDatasources": ["github-runners"],
+      "matchUpdateTypes": ["minor", "patch", "pin"],
       "minimumReleaseAge": "3 days",
       "automerge": true
     },
     {
       "description": "Dev-group tooling (pytest-hacc, mypy) from the native manager. Safe only because manifest.json requirements is empty; repos that ship runtime deps deny those by name after this. Both manager names are listed because sibling repos use each and both validate.",
-      "matchManagers": [
-        "pep621",
-        "uv"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
+      "matchManagers": ["pep621", "uv"],
+      "matchUpdateTypes": ["minor", "patch"],
       "minimumReleaseAge": "3 days",
       "automerge": true
     },
     {
       "description": "The uv required-version pin in [tool.uv], which comes from the custom regex manager rather than the native pep621/uv managers and so is not covered by the rule above. Scoped by depName so it does not sweep in the other custom.regex managers.",
-      "matchManagers": [
-        "custom.regex"
-      ],
-      "matchDepNames": [
-        "uv"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["uv"],
+      "matchUpdateTypes": ["minor", "patch"],
       "minimumReleaseAge": "3 days",
       "automerge": true
     },
     {
       "description": "Majors always get a human. Must stay last to override every opt-in above.",
-      "matchUpdateTypes": [
-        "major"
-      ],
+      "matchUpdateTypes": ["major"],
       "automerge": false
     }
   ],
