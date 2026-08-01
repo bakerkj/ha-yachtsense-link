@@ -6,9 +6,13 @@
     ":semanticCommits",
     ":dependencyDashboard"
   ],
-  "schedule": ["before 6pm on friday"],
+  "schedule": [
+    "before 6pm on friday"
+  ],
   "timezone": "America/New_York",
-  "assignees": ["bakerkj"],
+  "assignees": [
+    "bakerkj"
+  ],
   "pre-commit": {
     "enabled": true
   },
@@ -16,7 +20,9 @@
     {
       "customType": "regex",
       "description": "GitHub runner versions in shell scripts and YAML within workflows",
-      "managerFilePatterns": ["/.github/workflows/.+\\.ya?ml$/"],
+      "managerFilePatterns": [
+        "/.github/workflows/.+\\.ya?ml$/"
+      ],
       "matchStrings": [
         "runner=\"(?<depName>ubuntu|macos|windows)-(?<currentValue>[\\w.-]+)\"",
         "runs-on:\\s*(?<depName>ubuntu|macos|windows)-(?<currentValue>[\\w.-]+)"
@@ -26,7 +32,9 @@
     {
       "customType": "regex",
       "description": "npm packages pinned via pre-commit additional_dependencies",
-      "managerFilePatterns": ["/^\\.pre-commit-config\\.yaml$/"],
+      "managerFilePatterns": [
+        "/^\\.pre-commit-config\\.yaml$/"
+      ],
       "matchStrings": [
         "\"(?<depName>@?[^\"@\\s]+)@(?<currentValue>[^\"\\s]+)\""
       ],
@@ -36,8 +44,12 @@
     {
       "customType": "regex",
       "description": "uv tool required-version pin in pyproject.toml [tool.uv]",
-      "managerFilePatterns": ["/(^|/)pyproject\\.toml$/"],
-      "matchStrings": ["required-version\\s*=\\s*\"(?<currentValue>[^\"]+)\""],
+      "managerFilePatterns": [
+        "/(^|/)pyproject\\.toml$/"
+      ],
+      "matchStrings": [
+        "required-version\\s*=\\s*\"(?<currentValue>[^\"]+)\""
+      ],
       "depNameTemplate": "uv",
       "datasourceTemplate": "pypi",
       "versioningTemplate": "pep440"
@@ -45,12 +57,91 @@
   ],
   "packageRules": [
     {
-      "matchManagers": ["github-actions"],
+      "matchManagers": [
+        "github-actions"
+      ],
       "groupName": "github-actions"
     },
     {
-      "matchManagers": ["pre-commit"],
+      "matchManagers": [
+        "pre-commit"
+      ],
       "groupName": "pre-commit hooks"
+    },
+    {
+      "description": "Auto-merge rules below are order-dependent: renovate applies packageRules in array order and the last match wins. Deny anything that could reach a shipped artifact, so a future Dockerfile or runtime requirement defaults to manual review.",
+      "matchDatasources": [
+        "docker",
+        "deb",
+        "custom.aports",
+        "github-releases",
+        "git-refs",
+        "github-tags"
+      ],
+      "automerge": false
+    },
+    {
+      "description": "Actions are CI-only here: HACS ships the repo source, so nothing an action does reaches a user. Re-enables github-tags, denied above.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pin",
+        "pinDigest"
+      ],
+      "minimumReleaseAge": "3 days",
+      "automerge": true
+    },
+    {
+      "description": "Lint and format tooling. Never shipped.",
+      "matchManagers": [
+        "pre-commit"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pin",
+        "pinDigest"
+      ],
+      "minimumReleaseAge": "3 days",
+      "automerge": true
+    },
+    {
+      "description": "CI runner images.",
+      "matchDatasources": [
+        "github-runners"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "Dev-group tooling (pytest-hacc, mypy) and the uv pin. Safe only because manifest.json requirements is empty; repos that ship runtime deps deny those by name after this. Both manager names are listed because sibling repos use each and both validate.",
+      "matchManagers": [
+        "pep621",
+        "uv"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "minimumReleaseAge": "3 days",
+      "automerge": true
+    },
+    {
+      "description": "Majors always get a human. Must stay last to override every opt-in above.",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false
     }
-  ]
+  ],
+  "prConcurrentLimit": 3
 }
