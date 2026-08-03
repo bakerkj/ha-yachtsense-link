@@ -64,6 +64,25 @@ TO_REDACT = {
     "lng",
     # Connected-client hostnames.
     "DName",
+    # Secrets returned by the config reads: GetWlanSettings hands back the AP's
+    # pre-shared key in cleartext, GetAllApn the per-APN carrier credentials,
+    # and GetGnssAuthToken a bearer token.
+    "WpaKey",
+    "wpakey",
+    "WpaKey1",
+    "Key",
+    "key",
+    "auth_token",
+    # LAN/IPv6 addressing from LanConfigure.
+    "ip_1",
+    "ip_2",
+    "gateway",
+    "start_ip",
+    "end_ip",
+    "IPv6_Global_ID",
+    "ipv6addr",
+    "ipq_ipaddr",
+    "Ssid",
 }
 
 

@@ -31,11 +31,15 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
 from .const import (
+    DATA_APN,
     DATA_HOME,
     DATA_HUB,
     DATA_IO,
+    DATA_LAN,
     DATA_MOBILE,
     DATA_THROUGHPUT,
+    DATA_UPGRADE,
+    DATA_WLAN,
     DEV_CELLULAR,
     DEV_HUB,
     DEV_IO,
@@ -139,6 +143,76 @@ def _uplink_signal(d: dict[str, Any]) -> StateType:
 def _client_count(d: dict[str, Any]) -> StateType:
     lst = (d.get("connected") or {}).get("dev_list")
     return len(lst) if isinstance(lst, list) else None
+
+
+def _lan(d: dict[str, Any]) -> dict[str, Any]:
+    return d.get(DATA_LAN) or {}
+
+
+def _wlan(d: dict[str, Any]) -> dict[str, Any]:
+    """The first radio's config from GetWlanSettings."""
+    cfgs = (d.get(DATA_WLAN) or {}).get("wifi_config")
+    return cfgs[0] if isinstance(cfgs, list) and cfgs else {}
+
+
+def _vap(d: dict[str, Any]) -> dict[str, Any]:
+    """The first virtual AP on the first radio (the boat's own SSID)."""
+    vaps = _wlan(d).get("vap_config")
+    return vaps[0] if isinstance(vaps, list) and vaps else {}
+
+
+def _text(v: Any) -> StateType:
+    """A router string, with its placeholders ("--", "-", "") treated as absent."""
+    return v if isinstance(v, str) and v.strip() not in ("", "-", "--") else None
+
+
+# GetWlanSettings returns these as small enums; the labels are the ones the
+# router's own WiFi page builds its dropdowns from.
+_SECURITY_MODES: dict[int, str] = {0: "None", 1: "WPA", 2: "WPA2", 3: "WPA/WPA2"}
+_HT_MODES: dict[int, str] = {1: "20 MHz", 2: "40 MHz"}
+
+
+def _security(d: dict[str, Any]) -> StateType:
+    mode = _vap(d).get("SecurityMode")
+    return _SECURITY_MODES.get(mode) if isinstance(mode, int) else None
+
+
+def _bandwidth(d: dict[str, Any]) -> StateType:
+    mode = _wlan(d).get("HtMode")
+    return _HT_MODES.get(mode) if isinstance(mode, int) else None
+
+
+def _channel(d: dict[str, Any]) -> StateType:
+    ch = _wlan(d).get("Channel")
+    # 0 is the router's "pick one for me" setting, not channel zero.
+    return "Auto" if ch == 0 else (str(ch) if isinstance(ch, int) else None)
+
+
+def _apn(d: dict[str, Any]) -> dict[str, Any]:
+    """The selected APN profile for the SIM that's currently in use.
+
+    GetAllApn returns one profile list per SIM slot, in slot order.
+    """
+    slots = (d.get(DATA_APN) or {}).get("apns")
+    if not isinstance(slots, list):
+        return {}
+    m = d.get(DATA_MOBILE) or {}
+    idx = m.get("active_sim") if isinstance(m.get("active_sim"), int) else 0
+    if not (isinstance(idx, int) and 0 <= idx < len(slots)):
+        return {}
+    profiles = slots[idx]
+    if not isinstance(profiles, list):
+        return {}
+    for p in profiles:
+        if isinstance(p, dict) and p.get("selected") == 1:
+            return p
+    return profiles[0] if profiles and isinstance(profiles[0], dict) else {}
+
+
+def _sim_slot(d: dict[str, Any]) -> StateType:
+    """The active SIM as a 1-based slot number, matching the router's labelling."""
+    idx = (d.get(DATA_MOBILE) or {}).get("active_sim")
+    return idx + 1 if isinstance(idx, int) and not isinstance(idx, bool) else None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -414,6 +488,208 @@ SENSORS: tuple[YsSensorDescription, ...] = (
         icon="mdi:lan-connect",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_client_count,
+    ),
+    # --- cellular: serving cell and SIM detail ---
+    YsSensorDescription(
+        key="cellular_sim_slot",
+        name="Active SIM",
+        group=DEV_CELLULAR,
+        icon="mdi:sim",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_sim_slot,
+    ),
+    YsSensorDescription(
+        key="cellular_apn",
+        name="APN",
+        group=DEV_CELLULAR,
+        icon="mdi:transit-connection-variant",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text(_apn(d).get("apn")),
+    ),
+    YsSensorDescription(
+        key="cellular_cell_id",
+        name="Cell ID",
+        group=DEV_CELLULAR,
+        icon="mdi:radio-tower",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text(_mob(d).get("cell_id")),
+    ),
+    YsSensorDescription(
+        key="cellular_lac",
+        name="Location area code",
+        group=DEV_CELLULAR,
+        icon="mdi:map-marker-radius",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text(_mob(d).get("lac")),
+    ),
+    YsSensorDescription(
+        key="cellular_gateway",
+        name="Gateway",
+        group=DEV_CELLULAR,
+        icon="mdi:ip-network-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text(_mob(d).get("ipv4gw")),
+    ),
+    YsSensorDescription(
+        key="cellular_cycle_reset_day",
+        name="Cycle reset day",
+        group=DEV_CELLULAR,
+        icon="mdi:calendar-start",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _int(_num(_sim(d).get("usage_cycle"))),
+    ),
+    YsSensorDescription(
+        key="cellular_data_warning",
+        name="Data warning level",
+        group=DEV_CELLULAR,
+        icon="mdi:database-alert",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: (
+            _num(_sim(d).get("data_warning_size"))
+            if _sim(d).get("data_warning_flag") == 1
+            else None
+        ),
+        **_DATA,
+    ),
+    # --- WiFi access point config ---
+    YsSensorDescription(
+        key="net_wifi_ap_channel",
+        name="Channel",
+        group=DEV_WIFI_AP,
+        icon="mdi:wifi-settings",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_channel,
+    ),
+    YsSensorDescription(
+        key="net_wifi_ap_security",
+        name="Security",
+        group=DEV_WIFI_AP,
+        icon="mdi:wifi-lock",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_security,
+    ),
+    YsSensorDescription(
+        key="net_wifi_ap_bandwidth",
+        name="Bandwidth",
+        group=DEV_WIFI_AP,
+        icon="mdi:arrow-expand-horizontal",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_bandwidth,
+    ),
+    # --- WAN / LAN ---
+    YsSensorDescription(
+        key="net_wan_ip",
+        name="WAN IP address",
+        group=DEV_NETWORK,
+        icon="mdi:ip-network",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text((_home(d).get("wan") or {}).get("ipaddr")),
+    ),
+    YsSensorDescription(
+        key="net_wan_gateway",
+        name="WAN gateway",
+        group=DEV_NETWORK,
+        icon="mdi:ip-network-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text((_home(d).get("wan") or {}).get("gateway")),
+    ),
+    YsSensorDescription(
+        key="net_eth_clients",
+        name="Ethernet devices",
+        group=DEV_NETWORK,
+        icon="mdi:ethernet",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: _int(_num((_home(d).get("dev") or {}).get("eth_num"))),
+    ),
+    YsSensorDescription(
+        key="net_lan_ip",
+        name="LAN IP address",
+        group=DEV_NETWORK,
+        icon="mdi:ip-network",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text(_lan(d).get("ip_1")),
+    ),
+    YsSensorDescription(
+        key="net_lan_netmask",
+        name="LAN subnet mask",
+        group=DEV_NETWORK,
+        icon="mdi:ip-network-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text(_lan(d).get("netmask")),
+    ),
+    YsSensorDescription(
+        key="net_dhcp_start",
+        name="DHCP pool start",
+        group=DEV_NETWORK,
+        icon="mdi:ip-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text(_lan(d).get("start_ip")),
+    ),
+    YsSensorDescription(
+        key="net_dhcp_end",
+        name="DHCP pool end",
+        group=DEV_NETWORK,
+        icon="mdi:ip-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text(_lan(d).get("end_ip")),
+    ),
+    YsSensorDescription(
+        key="net_dhcp_lease",
+        name="DHCP lease time",
+        group=DEV_NETWORK,
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _int(_num(_lan(d).get("lease_time"))),
+    ),
+    # --- hub: firmware detail and upgrade state ---
+    YsSensorDescription(
+        key="hub_model_number",
+        name="Model number",
+        group=DEV_HUB,
+        icon="mdi:information-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text(_hub(d).get("ModelNum")),
+    ),
+    YsSensorDescription(
+        key="hub_platform_version",
+        name="Platform version",
+        group=DEV_HUB,
+        icon="mdi:information-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text(_hub(d).get("PlatformVersion")),
+    ),
+    YsSensorDescription(
+        key="hub_bundle_version",
+        name="Bundle version",
+        group=DEV_HUB,
+        icon="mdi:information-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text(_hub(d).get("BundleVersion")),
+    ),
+    YsSensorDescription(
+        key="hub_router_version",
+        name="Router firmware",
+        group=DEV_HUB,
+        icon="mdi:information-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text(_hub(d).get("ipq_version")),
+    ),
+    YsSensorDescription(
+        key="hub_modem_firmware",
+        name="Modem firmware",
+        group=DEV_HUB,
+        icon="mdi:information-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text(_hub(d).get("Module_version")),
+    ),
+    YsSensorDescription(
+        key="hub_upgrade_status",
+        name="Upgrade status",
+        group=DEV_HUB,
+        icon="mdi:package-down",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _text((d.get(DATA_UPGRADE) or {}).get("steps")),
     ),
 )
 

@@ -3,11 +3,16 @@
 
 """Data update coordinator for the YachtSense Link integration.
 
-One poll at the configured interval gathers every method and exposes a merged
-data dict; all entities update together on that interval. Throughput is the
-per-cycle delta of the cumulative data counter. HA's own statistics build
+One poll at the configured interval gathers every live method and exposes a
+merged data dict; all entities update together on that interval. Throughput is
+the per-cycle delta of the cumulative data counter. HA's own statistics build
 hourly/daily/monthly usage from that cumulative counter (a ``total_increasing``
 sensor), so no bespoke bucketing is needed.
+
+Router configuration (WiFi, APN, LAN) changes only when someone edits it, so
+those methods are refreshed every ``SLOW_EVERY`` cycles and their last-known
+values carried forward in between -- an embedded router should not field eleven
+concurrent RPCs a minute just to re-read static settings.
 """
 
 from __future__ import annotations
@@ -24,26 +29,38 @@ from homeassistant.util import dt as dt_util
 
 from .api import YachtSenseLinkApi, YsAuthError, YsError
 from .const import (
+    DATA_APN,
     DATA_CONNECTED,
     DATA_GPS,
     DATA_HOME,
     DATA_HUB,
     DATA_IO,
+    DATA_LAN,
     DATA_MOBILE,
+    DATA_SELFCHECK,
     DATA_THROUGHPUT,
+    DATA_UPGRADE,
+    DATA_WLAN,
     DOMAIN,
     IO_READ_PARAMS,
+    LAN_READ_PARAMS,
+    METHOD_APN,
     METHOD_CONNECTED,
     METHOD_GPS,
     METHOD_HOME,
     METHOD_HUB,
     METHOD_IO,
+    METHOD_LAN,
     METHOD_MOBILE,
+    METHOD_SELFCHECK,
+    METHOD_UPGRADE,
+    METHOD_WLAN,
+    SLOW_EVERY,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-# (merged-data key, RPC method, params)
+# (merged-data key, RPC method, params), polled every cycle.
 _CALLS: tuple[tuple[str, str, dict[str, Any] | None], ...] = (
     (DATA_HOME, METHOD_HOME, None),
     (DATA_MOBILE, METHOD_MOBILE, None),
@@ -51,6 +68,15 @@ _CALLS: tuple[tuple[str, str, dict[str, Any] | None], ...] = (
     (DATA_CONNECTED, METHOD_CONNECTED, None),
     (DATA_GPS, METHOD_GPS, None),
     (DATA_IO, METHOD_IO, IO_READ_PARAMS),
+    (DATA_SELFCHECK, METHOD_SELFCHECK, None),
+    (DATA_UPGRADE, METHOD_UPGRADE, None),
+)
+
+# Configuration reads, refreshed every SLOW_EVERY cycles.
+_SLOW_CALLS: tuple[tuple[str, str, dict[str, Any] | None], ...] = (
+    (DATA_WLAN, METHOD_WLAN, None),
+    (DATA_APN, METHOD_APN, None),
+    (DATA_LAN, METHOD_LAN, LAN_READ_PARAMS),
 )
 
 
@@ -78,6 +104,9 @@ class YachtSenseLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.base_id: str = ""  # set by __init__.py from the config entry
         self._prev_used: float | None = None
         self._prev_used_ts: float | None = None
+        self._cycle = 0
+        # Last-known config reads, carried forward between slow refreshes.
+        self._slow: dict[str, Any] = {key: None for key, _m, _p in _SLOW_CALLS}
 
     async def _async_update_data(self) -> dict[str, Any]:
         # Log in once up front so the concurrent calls below share the session.
@@ -88,31 +117,45 @@ class YachtSenseLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except YsError as exc:
             raise UpdateFailed(str(exc)) from exc
 
+        # Refresh the config reads on the first cycle and every SLOW_EVERY after.
+        slow_due = self._cycle % SLOW_EVERY == 0
+        self._cycle += 1
+        calls = (*_CALLS, *_SLOW_CALLS) if slow_due else _CALLS
+
         results = await asyncio.gather(
-            *(self.api.call(method, params) for _key, method, params in _CALLS),
+            *(self.api.call(method, params) for _key, method, params in calls),
             return_exceptions=True,
         )
 
         data: dict[str, Any] = {}
         auth_failures = 0
         failures = 0
-        for (key, method, _params), res in zip(_CALLS, results):
-            if isinstance(res, YsAuthError):
-                auth_failures += 1
-                failures += 1
-                data[key] = None
-            elif isinstance(res, Exception):
-                _LOGGER.debug("%s failed: %s", method, res)
-                failures += 1
-                data[key] = None
+        for (key, method, _params), res in zip(calls, results):
+            slow = key in self._slow
+            if isinstance(res, Exception):
+                if isinstance(res, YsAuthError):
+                    auth_failures += 1
+                else:
+                    _LOGGER.debug("%s failed: %s", method, res)
+                if not slow:
+                    failures += 1
+                # A failed config read keeps its previous value rather than
+                # blanking entities that describe settings which haven't changed.
+                data[key] = self._slow[key] if slow else None
             else:
                 data[key] = res
+                if slow:
+                    self._slow[key] = res
 
-        if auth_failures == len(_CALLS):
+        # Carry forward any config read not due this cycle.
+        for key, value in self._slow.items():
+            data.setdefault(key, value)
+
+        if auth_failures == len(calls):
             raise ConfigEntryAuthFailed("router rejected the session on every call")
-        # A cycle where every call failed (but not all on auth) is a full data
-        # loss -- fail the update so entities go unavailable rather than showing
-        # a stale/blank state as if the poll had succeeded.
+        # A cycle where every live call failed (but not all on auth) is a full
+        # data loss -- fail the update so entities go unavailable rather than
+        # showing a stale/blank state as if the poll had succeeded.
         if failures == len(_CALLS):
             raise UpdateFailed("router returned no data on any call")
 

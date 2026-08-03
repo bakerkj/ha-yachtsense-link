@@ -7,6 +7,13 @@ The router runs a GoAhead web server: a form ``POST /action/login`` yields a
 session cookie, then everything is served through a single JSON-RPC endpoint
 ``POST /action/action``. Sessions expire (error code -99), so calls re-login
 once and retry.
+
+Newer firmware (V142.242.530 and later) serves the web API over HTTPS only and
+302-redirects every plain-HTTP path to Raymarine's cloud portal, so the scheme
+is probed on first use and the working one cached. TLS is not verified: the
+router presents a ``CN=yachtsense.raymarine.com`` certificate signed by a
+private Raymarine CA, which matches neither the LAN IP it is reached on nor any
+public trust root.
 """
 
 from __future__ import annotations
@@ -15,6 +22,7 @@ import asyncio
 import logging
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 import aiohttp
 
@@ -61,7 +69,8 @@ class YachtSenseLinkApi:
         timeout: float = 10.0,
     ) -> None:
         self._session = session
-        self._base = f"http://{host}"
+        self._host = host
+        self._scheme: str | None = None
         self._user = username
         self._password = password
         self._timeout = aiohttp.ClientTimeout(total=timeout)
@@ -69,6 +78,10 @@ class YachtSenseLinkApi:
         self._login_lock = asyncio.Lock()
         self._last_login_error: YsError | None = None
         self._last_login_at = 0.0
+
+    @property
+    def _base(self) -> str:
+        return f"{self._scheme or 'https'}://{self._host}"
 
     async def aclose(self) -> None:
         """Close the underlying HTTP session."""
@@ -99,12 +112,49 @@ class YachtSenseLinkApi:
                 raise
             self._last_login_error = None
 
+    async def _probe_scheme(self) -> str:
+        """Return the scheme the router's own web API answers on.
+
+        A scheme counts as working only if it serves ``/index.html`` itself. A
+        redirect means it doesn't: newer firmware bounces every plain-HTTP path
+        to Raymarine's cloud portal, and following that would send the login
+        POST to the internet instead of the router. A same-host redirect that
+        only upgrades the scheme is likewise a "use the other one" signal, not
+        an endorsement of the scheme that issued it -- the loop tries the other
+        scheme on its own, so there is nothing to chase here.
+        """
+        host = urlsplit(f"//{self._host}").hostname
+        errors: list[str] = []
+        for scheme in ("https", "http"):
+            try:
+                async with self._session.get(
+                    f"{scheme}://{self._host}/index.html",
+                    timeout=self._timeout,
+                    ssl=False,
+                    allow_redirects=False,
+                ) as resp:
+                    if 300 <= resp.status < 400:
+                        location = resp.headers.get("Location", "")
+                        loc = urlsplit(location)
+                        # A relative Location keeps both host and scheme.
+                        same_host = not loc.hostname or loc.hostname == host
+                        if not same_host or loc.scheme not in ("", scheme):
+                            errors.append(f"{scheme}: redirects to {location}")
+                            continue
+                    return scheme
+            except aiohttp.ClientError as exc:
+                errors.append(f"{scheme}: {exc}")
+        raise YsError(f"router not reachable ({'; '.join(errors)})")
+
     async def _do_login(self) -> None:
         # Prime the session cookie, then post credentials (plaintext, form-encoded;
         # the router does no client-side hashing for login).
         try:
+            if self._scheme is None:
+                self._scheme = await self._probe_scheme()
+                _LOGGER.debug("Using %s for %s", self._scheme, self._host)
             async with self._session.get(
-                f"{self._base}/index.html", timeout=self._timeout
+                f"{self._base}/index.html", timeout=self._timeout, ssl=False
             ):
                 pass
             async with self._session.post(
@@ -116,6 +166,7 @@ class YachtSenseLinkApi:
                 },
                 headers={"Time-Stamp": str(int(time.time() * 1000)), "Time-Zone": "0"},
                 timeout=self._timeout,
+                ssl=False,
             ) as resp:
                 doc = await resp.json(content_type=None)
         except aiohttp.ClientError as exc:
@@ -155,7 +206,10 @@ class YachtSenseLinkApi:
         }
         try:
             async with self._session.post(
-                f"{self._base}/action/action", json=payload, timeout=self._timeout
+                f"{self._base}/action/action",
+                json=payload,
+                timeout=self._timeout,
+                ssl=False,
             ) as resp:
                 doc = await resp.json(content_type=None)
         except aiohttp.ClientError as exc:

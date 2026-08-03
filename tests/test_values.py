@@ -10,17 +10,34 @@ from custom_components.yachtsense_link.binary_sensor import (
     IO_SWITCH_SENSORS,
 )
 from custom_components.yachtsense_link.const import (
+    DATA_APN,
     DATA_CONNECTED,
     DATA_GPS,
     DATA_HOME,
     DATA_HUB,
     DATA_IO,
+    DATA_LAN,
     DATA_MOBILE,
+    DATA_SELFCHECK,
     DATA_THROUGHPUT,
+    DATA_UPGRADE,
+    DATA_WLAN,
 )
 from custom_components.yachtsense_link.sensor import IO_VOLTAGE_SENSORS, SENSORS
 
-from .fixtures import CONNECTED, GPS, HOME, HUB, IO, MOBILE
+from .fixtures import (
+    APN,
+    CONNECTED,
+    GPS,
+    HOME,
+    HUB,
+    IO,
+    LAN,
+    MOBILE,
+    SELFCHECK,
+    UPGRADE,
+    WLAN,
+)
 
 
 def _merged() -> dict:
@@ -31,6 +48,11 @@ def _merged() -> dict:
         DATA_CONNECTED: CONNECTED,
         DATA_GPS: GPS,
         DATA_IO: IO,
+        DATA_SELFCHECK: SELFCHECK,
+        DATA_UPGRADE: UPGRADE,
+        DATA_WLAN: WLAN,
+        DATA_APN: APN,
+        DATA_LAN: LAN,
         DATA_THROUGHPUT: {"rate_mb_per_h": 123.4},
     }
 
@@ -68,10 +90,42 @@ def _binaries() -> dict:
         ("net_clients", 2),
         ("io_ch1_voltage", 12.5),
         ("io_ch4_voltage", None),  # channel disabled
+        # --- added for firmware V142.242.530 ---
+        ("cellular_sim_slot", 1),  # active_sim 0 -> slot 1
+        ("cellular_apn", "test.apn"),  # selected profile for the active SIM
+        ("cellular_cell_id", "C4C7021"),
+        ("cellular_lac", "55F3"),
+        ("cellular_gateway", "192.0.2.254"),
+        ("cellular_cycle_reset_day", 17),
+        ("cellular_data_warning", 2048.0),
+        ("net_wifi_ap_channel", "Auto"),  # Channel 0
+        ("net_wifi_ap_security", "WPA2"),  # SecurityMode 2
+        ("net_wifi_ap_bandwidth", "40 MHz"),  # HtMode 2
+        ("net_wan_ip", None),  # "--" placeholder, not an address
+        ("net_wan_gateway", None),
+        ("net_eth_clients", 2),
+        ("net_lan_ip", "192.0.2.170"),
+        ("net_lan_netmask", "255.255.248.0"),
+        ("net_dhcp_start", "192.0.2.4"),
+        ("net_dhcp_end", "192.0.2.254"),
+        ("net_dhcp_lease", 172800),
+        ("hub_model_number", "E70640"),
+        ("hub_bundle_version", "5.30"),
+        ("hub_modem_firmware", "TESTMODEM01"),
+        ("hub_upgrade_status", "The upgrade program is idle"),
     ],
 )
 def test_sensor_values(key, expected):
     assert _sensors()[key].value_fn(_merged()) == expected
+
+
+def test_apn_follows_the_active_sim():
+    s = _sensors()["cellular_apn"]
+    d = _merged()
+    assert s.value_fn(d) == "test.apn"
+    # Slot 2 active -> the second profile list.
+    d[DATA_MOBILE] = {**MOBILE, "active_sim": 1}
+    assert s.value_fn(d) == "other.apn"
 
 
 def test_wifi_uplink_signal():
@@ -98,10 +152,26 @@ def test_temperature_and_operating_time():
         ("net_wifi_uplink", False),  # sta status 0
         ("io_ch5", True),  # types 1
         ("io_ch6", False),
+        # --- added for firmware V142.242.530 ---
+        ("hub_self_check", False),  # SelfCheck 0 == no problem
+        ("hub_upgrading", False),  # status 3 == idle
+        ("cellular_ipv6", True),
+        ("cellular_data_enabled", True),
+        ("cellular_roaming_enabled", True),
+        ("net_lan_ipv6", True),
     ],
 )
 def test_binary_values(key, expected):
     assert _binaries()[key].is_on_fn(_merged()) is expected
+
+
+def test_self_check_and_upgrade_flag_problems():
+    b = _binaries()
+    d = _merged()
+    d[DATA_SELFCHECK] = {"SelfCheck": 2}
+    assert b["hub_self_check"].is_on_fn(d) is True
+    d[DATA_UPGRADE] = {"status": 1, "steps": "Downloading"}
+    assert b["hub_upgrading"].is_on_fn(d) is True
 
 
 def test_empty_data_is_safe():
