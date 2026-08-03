@@ -28,8 +28,10 @@ LOGIN_LOCKOUT = {"result": {"login": "0", "left_seconds": 30, "try_times": 2}}
 class _Resp:
     """Async-context-manager stand-in for an aiohttp response."""
 
-    def __init__(self, payload):
+    def __init__(self, payload, status=200, headers=None):
         self._payload = payload
+        self.status = status
+        self.headers = headers or {}
 
     async def __aenter__(self):
         return self
@@ -46,21 +48,28 @@ class _Resp:
 class FakeSession:
     """Programmable fake aiohttp ClientSession for the router API."""
 
-    def __init__(self, *, login=LOGIN_OK, rpc=None):
+    def __init__(self, *, login=LOGIN_OK, rpc=None, get=None):
         # login: payload dict, or an Exception to raise from json()
         # rpc: {method: payload | Exception | [payload, ...] queue}
+        # get: {scheme: _Resp | Exception} for scheme probing; defaults to 200s
         self._login = login
         self._rpc = rpc or {}
+        self._get = get or {}
         self.login_posts = 0
         self.rpc_posts: list[str] = []
+        self.get_urls: list[str] = []
         self.last_login_data: dict | None = None
         self.last_login_headers: dict | None = None
         self.closed = False
 
-    def get(self, url, timeout=None):
-        return _Resp({})
+    def get(self, url, timeout=None, ssl=None, allow_redirects=True):
+        self.get_urls.append(url)
+        spec = self._get.get(url.split("://", 1)[0])
+        if isinstance(spec, Exception):
+            raise spec
+        return spec if spec is not None else _Resp({})
 
-    def post(self, url, data=None, json=None, headers=None, timeout=None):
+    def post(self, url, data=None, json=None, headers=None, timeout=None, ssl=None):
         if url.endswith("/action/login"):
             self.login_posts += 1
             self.last_login_data = data
@@ -163,3 +172,43 @@ async def test_concurrent_failed_logins_are_coalesced():
     )
     assert all(isinstance(r, YsAuthError) for r in results)
     assert session.login_posts == 1
+
+
+async def test_prefers_https_and_posts_there():
+    # New firmware is HTTPS-only; every request must go there.
+    session = FakeSession()
+    api = _api(session)
+    await api.call("GetHubInfo")
+    assert session.get_urls[0].startswith("https://")
+
+
+async def test_falls_back_to_http_when_https_unavailable():
+    # Older firmware serves plain HTTP and refuses TLS.
+    session = FakeSession(get={"https": aiohttp.ClientError("no tls")})
+    api = _api(session)
+    await api.call("GetHubInfo")
+    assert any(u.startswith("http://") for u in session.get_urls)
+    assert session.rpc_posts == ["GetHubInfo"]
+
+
+async def test_http_redirect_off_box_is_not_treated_as_reachable():
+    # New firmware 302s every plain-HTTP path to Raymarine's cloud portal.
+    # Following that would post credentials off-box, so it must not count as
+    # a working scheme -- with HTTPS also down there is nothing to talk to.
+    cloud = _Resp(
+        {}, status=302, headers={"Location": "https://yachtsense.raymarine.com/"}
+    )
+    session = FakeSession(get={"https": aiohttp.ClientError("down"), "http": cloud})
+    api = _api(session)
+    with pytest.raises(YsError, match="not reachable"):
+        await api.login()
+    assert session.login_posts == 0
+
+
+async def test_scheme_is_probed_once():
+    session = FakeSession()
+    api = _api(session)
+    await api.call("GetHubInfo")
+    await api.call("GetMobile")
+    # One probe GET plus one session-priming GET per login, not per call.
+    assert len([u for u in session.get_urls if u.endswith("/index.html")]) == 2
