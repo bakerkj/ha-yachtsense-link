@@ -212,3 +212,37 @@ async def test_scheme_is_probed_once():
     await api.call("GetMobile")
     # One probe GET plus one session-priming GET per login, not per call.
     assert len([u for u in session.get_urls if u.endswith("/index.html")]) == 2
+
+
+async def test_same_host_scheme_upgrade_redirect_is_not_adopted():
+    # A router that enforces TLS by redirecting http -> https on the SAME host
+    # has not served /index.html over http. Adopting "http" would send every
+    # later RPC to a path that only ever bounces. With HTTPS also down there is
+    # nothing to talk to.
+    upgrade = _Resp(
+        {}, status=301, headers={"Location": "https://192.0.2.10/index.html"}
+    )
+    session = FakeSession(get={"https": aiohttp.ClientError("down"), "http": upgrade})
+    api = _api(session)
+    with pytest.raises(YsError, match="not reachable"):
+        await api.login()
+    assert session.login_posts == 0
+
+
+async def test_same_scheme_relative_redirect_is_accepted():
+    # A relative Location keeps both host and scheme, so the scheme works.
+    session = FakeSession(
+        get={"https": _Resp({}, status=302, headers={"Location": "/index.html"})}
+    )
+    api = _api(session)
+    await api.call("GetHubInfo")
+    assert session.get_urls[0].startswith("https://")
+
+
+async def test_host_is_matched_exactly_not_by_substring():
+    # "192.0.2.1" is a substring of "192.0.2.10"; a redirect to the former is
+    # off-box and must not be read as staying on the configured host.
+    other = _Resp({}, status=302, headers={"Location": "http://192.0.2.1/index.html"})
+    session = FakeSession(get={"https": aiohttp.ClientError("down"), "http": other})
+    with pytest.raises(YsError, match="not reachable"):
+        await _api(session).login()

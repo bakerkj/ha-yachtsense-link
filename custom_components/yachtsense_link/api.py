@@ -22,6 +22,7 @@ import asyncio
 import logging
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 import aiohttp
 
@@ -114,11 +115,15 @@ class YachtSenseLinkApi:
     async def _probe_scheme(self) -> str:
         """Return the scheme the router's own web API answers on.
 
-        Newer firmware is HTTPS-only and bounces every plain-HTTP path to
-        Raymarine's cloud portal, so a 3xx pointing off-box means "wrong
-        scheme", not "reachable" -- following it would send the login POST to
-        the internet instead of the router.
+        A scheme counts as working only if it serves ``/index.html`` itself. A
+        redirect means it doesn't: newer firmware bounces every plain-HTTP path
+        to Raymarine's cloud portal, and following that would send the login
+        POST to the internet instead of the router. A same-host redirect that
+        only upgrades the scheme is likewise a "use the other one" signal, not
+        an endorsement of the scheme that issued it -- the loop tries the other
+        scheme on its own, so there is nothing to chase here.
         """
+        host = urlsplit(f"//{self._host}").hostname
         errors: list[str] = []
         for scheme in ("https", "http"):
             try:
@@ -128,10 +133,14 @@ class YachtSenseLinkApi:
                     ssl=False,
                     allow_redirects=False,
                 ) as resp:
-                    location = resp.headers.get("Location", "")
-                    if 300 <= resp.status < 400 and self._host not in location:
-                        errors.append(f"{scheme}: redirects off-box to {location}")
-                        continue
+                    if 300 <= resp.status < 400:
+                        location = resp.headers.get("Location", "")
+                        loc = urlsplit(location)
+                        # A relative Location keeps both host and scheme.
+                        same_host = not loc.hostname or loc.hostname == host
+                        if not same_host or loc.scheme not in ("", scheme):
+                            errors.append(f"{scheme}: redirects to {location}")
+                            continue
                     return scheme
             except aiohttp.ClientError as exc:
                 errors.append(f"{scheme}: {exc}")
