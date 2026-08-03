@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.0.3](https://github.com/bakerkj/ha-yachtsense-link/compare/v0.0.2...v0.0.3) (2026-08-03)
+
+
+### Features
+
+* support firmware V142.242.530 (HTTPS API and new data) ([#16](https://github.com/bakerkj/ha-yachtsense-link/issues/16)) ([325656d](https://github.com/bakerkj/ha-yachtsense-link/commit/325656d2e3a21ca9ef3aa3850d4b2fb423f639e2))
+
+
+### Bug Fixes
+
+* scope dev-tooling auto-merge by depType ([#15](https://github.com/bakerkj/ha-yachtsense-link/issues/15)) ([935b073](https://github.com/bakerkj/ha-yachtsense-link/commit/935b073487c08cba9df84bff0eb6715b641e0f0d))
+
+
+### Miscellaneous Chores
+
+* **deps:** update dependency uv to ==0.12.* ([#10](https://github.com/bakerkj/ha-yachtsense-link/issues/10)) ([958dc57](https://github.com/bakerkj/ha-yachtsense-link/commit/958dc578ee194f153b7aad98e3b6ac87602f0ae5))
+* **deps:** update home-assistant/actions digest to ab22029 ([#13](https://github.com/bakerkj/ha-yachtsense-link/issues/13)) ([6ce7fe7](https://github.com/bakerkj/ha-yachtsense-link/commit/6ce7fe77e3d690e98d8885f43a1e06b52ad9fe3e))
+* **deps:** update j178/prek-action action to v3 ([#12](https://github.com/bakerkj/ha-yachtsense-link/issues/12)) ([4ca3d24](https://github.com/bakerkj/ha-yachtsense-link/commit/4ca3d24538f2b28b39ad99307a1c8ce32fa02a75))
+* **deps:** update pre-commit hook astral-sh/ruff-pre-commit to v0.16.1 ([#11](https://github.com/bakerkj/ha-yachtsense-link/issues/11)) ([75a9d4d](https://github.com/bakerkj/ha-yachtsense-link/commit/75a9d4d69fa3a95a8744c60f7450f3e23700676e))
+
+
+### Documentation
+
+* install via HACS custom repository ([#8](https://github.com/bakerkj/ha-yachtsense-link/issues/8)) ([23228a1](https://github.com/bakerkj/ha-yachtsense-link/commit/23228a1c9fbda28c7e2e76c4dd9d593cc6c715e0))
+
+
+### Continuous Integration
+
+* enable renovate auto-merge for CI-only updates ([#14](https://github.com/bakerkj/ha-yachtsense-link/issues/14)) ([58ef94a](https://github.com/bakerkj/ha-yachtsense-link/commit/58ef94ad3d459bf3a75bc96c9868cb549c6f04b3))
+
 ## [0.0.2](https://github.com/bakerkj/ha-yachtsense-link/compare/v0.0.1...v0.0.2) (2026-07-27)
 
 
