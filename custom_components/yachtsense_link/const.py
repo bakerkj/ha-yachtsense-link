@@ -25,7 +25,21 @@ METHOD_HUB: Final = "GetHubInfo"
 METHOD_CONNECTED: Final = "GetConnectedDevices"
 METHOD_GPS: Final = "GetGps"
 METHOD_IO: Final = "IoConfigure"
+METHOD_SELFCHECK: Final = "GetModulesSelfCheckStatus"
+METHOD_UPGRADE: Final = "GetUpgradeStatusAndProgress"
 IO_READ_PARAMS: Final = {"mode": "0"}
+
+# Rarely-changing configuration, polled on a slower cadence (see SLOW_EVERY).
+METHOD_WLAN: Final = "GetWlanSettings"
+METHOD_APN: Final = "GetAllApn"
+METHOD_LAN: Final = "LanConfigure"
+# LanConfigure is a write verb for every mode except 3, which is the read the
+# router's own LAN page uses. Do NOT poll any other mode: mode 0 applies the
+# DHCP-server form, mode 8 applies the IPv6 form.
+LAN_READ_PARAMS: Final = {"mode": 3}
+
+# How many poll cycles between refreshes of the slow/config methods above.
+SLOW_EVERY: Final = 15
 
 # Merged-data keys used by the coordinator and entities.
 DATA_HOME: Final = "home"
@@ -35,6 +49,11 @@ DATA_CONNECTED: Final = "connected"
 DATA_GPS: Final = "gps"
 DATA_IO: Final = "io"
 DATA_THROUGHPUT: Final = "throughput"
+DATA_SELFCHECK: Final = "selfcheck"
+DATA_UPGRADE: Final = "upgrade"
+DATA_WLAN: Final = "wlan"
+DATA_APN: Final = "apn"
+DATA_LAN: Final = "lan"
 
 # Device group identifiers (one HA device each, all via_device the hub).
 DEV_HUB: Final = "hub"

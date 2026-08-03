@@ -22,11 +22,15 @@ HOME: dict[str, Any] = {
         "sinr": 3,
         "act": "FDD LTE",
         "band": "LTE BAND 4",
+        "lac": "55F3",
+        "cell_id": "C4C7021",
         "ipv4address": "192.0.2.1",
+        "ipv4gw": "192.0.2.254",
         "ipv4netstatus": 1,
+        "ipv6netstatus": 1,
     },
     "ap": {"status": 1, "name": "TestAP"},
-    "wan": {"internet": 3, "ipaddr": "--"},
+    "wan": {"internet": 3, "ipaddr": "--", "gateway": "--"},
     "dev": {"ap_num": 0, "eth_num": 2},
 }
 
@@ -40,6 +44,11 @@ MOBILE: dict[str, Any] = {
             "left_days": 23,
             "rese_date": "17/08/2026",
             "provider": "TestCarrier",
+            "usage_cycle": 17,
+            "mobile_data": 1,
+            "roam_data": 1,
+            "data_warning_flag": 1,
+            "data_warning_size": 2048,
             "data": [64, 64, 313, 165, 115, 64, 65, 3202, 218],
             "days": [
                 "17/7",
@@ -58,7 +67,12 @@ MOBILE: dict[str, Any] = {
 
 HUB: dict[str, Any] = {
     "Model": "YachtSense Link router",
+    "ModelNum": "E70640",
     "TotalVersion": "V142.242.430",
+    "PlatformVersion": "cloudconnector.1.4032 n2k.1.7530",
+    "BundleVersion": "5.30",
+    "ipq_version": "V2.42 2024-04-26 15:34",
+    "Module_version": "TESTMODEM01",
     "serial_num": "TESTSERIAL01",
     "IMEI": "000000000000000",
     "Voltage": 13.1,
@@ -114,6 +128,72 @@ IO: dict[str, Any] = {
 }
 
 
+# 0 == every internal module passed its power-on self-check.
+SELFCHECK: dict[str, Any] = {"SelfCheck": 0}
+
+UPGRADE: dict[str, Any] = {
+    "status": 3,
+    "steps": "The upgrade program is idle",
+    "count": 0,
+    "total": 0,
+    "stages": 0,
+}
+
+# SecurityMode 2 == WPA2, HtMode 2 == 40 MHz, Channel 0 == auto.
+WLAN: dict[str, Any] = {
+    "wifi_config": [
+        {
+            "PhyEnable": 1,
+            "HtMode": 2,
+            "Channel": 0,
+            "vap_config": [{"Ssid": "TestAP", "SecurityMode": 2, "WpaKey": "test-psk"}],
+        }
+    ]
+}
+
+# One profile list per SIM slot, in slot order.
+APN: dict[str, Any] = {
+    "apns": [
+        [
+            {
+                "id": 0,
+                "selected": 1,
+                "plmn": 310240,
+                "carrier": "TestCarrier",
+                "apn": "test.apn",
+                "username": "",
+                "password": "",
+                "ipmode": 0,
+            }
+        ],
+        [
+            {
+                "id": 0,
+                "selected": 1,
+                "plmn": 310410,
+                "carrier": "OtherCarrier",
+                "apn": "other.apn",
+                "username": "",
+                "password": "",
+                "ipmode": 0,
+            }
+        ],
+    ]
+}
+
+LAN: dict[str, Any] = {
+    "mode": 0,
+    "ip_1": "192.0.2.170",
+    "ip_2": "192.0.2.12",
+    "netmask": "255.255.248.0",
+    "gateway": "192.0.2.170",
+    "start_ip": "192.0.2.4",
+    "end_ip": "192.0.2.254",
+    "lease_time": 172800,
+    "Eth_IPv6_Enable": 1,
+}
+
+
 def responses() -> dict[str, Any]:
     """method -> result, keyed by the RPC method names the coordinator calls."""
     return {
@@ -123,4 +203,9 @@ def responses() -> dict[str, Any]:
         "GetConnectedDevices": CONNECTED,
         "GetGps": GPS,
         "IoConfigure": IO,
+        "GetModulesSelfCheckStatus": SELFCHECK,
+        "GetUpgradeStatusAndProgress": UPGRADE,
+        "GetWlanSettings": WLAN,
+        "GetAllApn": APN,
+        "LanConfigure": LAN,
     }

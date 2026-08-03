@@ -15,13 +15,19 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     DATA_HOME,
     DATA_IO,
+    DATA_LAN,
+    DATA_MOBILE,
+    DATA_SELFCHECK,
+    DATA_UPGRADE,
     DEV_CELLULAR,
+    DEV_HUB,
     DEV_IO,
     DEV_NETWORK,
     DEV_WIFI_AP,
@@ -29,6 +35,9 @@ from .const import (
     DOMAIN,
 )
 from .entity import YsEntity
+
+# GetUpgradeStatusAndProgress reports 3 while no upgrade is running.
+_UPGRADE_IDLE = 3
 
 
 def _sect(d: dict[str, Any], name: str) -> dict[str, Any]:
@@ -38,6 +47,36 @@ def _sect(d: dict[str, Any], name: str) -> dict[str, Any]:
 def _cellular_up(d: dict[str, Any]) -> bool | None:
     mob = _sect(d, "mobile")
     return mob.get("ipv4netstatus") == 1 if mob else None
+
+
+def _sim(d: dict[str, Any]) -> dict[str, Any]:
+    m = d.get(DATA_MOBILE) or {}
+    sims = m.get("sim") or []
+    idx = m.get("active_sim") or 0
+    if isinstance(idx, int) and 0 <= idx < len(sims):
+        return sims[idx]
+    return sims[0] if sims else {}
+
+
+def _flag(section: dict[str, Any], key: str) -> bool | None:
+    """A router 0/1 flag, or None when the section wasn't returned."""
+    val = section.get(key)
+    return val == 1 if isinstance(val, int) and not isinstance(val, bool) else None
+
+
+def _self_check_problem(d: dict[str, Any]) -> bool | None:
+    sc = (d.get(DATA_SELFCHECK) or {}).get("SelfCheck")
+    # Non-zero means at least one internal module failed its self-check.
+    return sc != 0 if isinstance(sc, int) and not isinstance(sc, bool) else None
+
+
+def _upgrading(d: dict[str, Any]) -> bool | None:
+    status = (d.get(DATA_UPGRADE) or {}).get("status")
+    return (
+        status != _UPGRADE_IDLE
+        if isinstance(status, int) and not isinstance(status, bool)
+        else None
+    )
 
 
 def _io_switch_fn(idx: int) -> Callable[[dict[str, Any]], bool | None]:
@@ -95,6 +134,53 @@ BINARY_SENSORS: tuple[YsBinaryDescription, ...] = (
         is_on_fn=lambda d: (
             (_sect(d, "sta").get("status") == 1) if _sect(d, "sta") else None
         ),
+    ),
+    YsBinaryDescription(
+        key="hub_self_check",
+        name="Self-check",
+        group=DEV_HUB,
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        is_on_fn=_self_check_problem,
+    ),
+    YsBinaryDescription(
+        key="hub_upgrading",
+        name="Upgrade in progress",
+        group=DEV_HUB,
+        device_class=BinarySensorDeviceClass.UPDATE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        is_on_fn=_upgrading,
+    ),
+    YsBinaryDescription(
+        key="cellular_ipv6",
+        name="IPv6",
+        group=DEV_CELLULAR,
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        is_on_fn=lambda d: _flag(_sect(d, "mobile"), "ipv6netstatus"),
+    ),
+    YsBinaryDescription(
+        key="cellular_data_enabled",
+        name="Mobile data enabled",
+        group=DEV_CELLULAR,
+        icon="mdi:network",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        is_on_fn=lambda d: _flag(_sim(d), "mobile_data"),
+    ),
+    YsBinaryDescription(
+        key="cellular_roaming_enabled",
+        name="Roaming allowed",
+        group=DEV_CELLULAR,
+        icon="mdi:earth",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        is_on_fn=lambda d: _flag(_sim(d), "roam_data"),
+    ),
+    YsBinaryDescription(
+        key="net_lan_ipv6",
+        name="LAN IPv6",
+        group=DEV_NETWORK,
+        icon="mdi:ip",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        is_on_fn=lambda d: _flag(d.get(DATA_LAN) or {}, "Eth_IPv6_Enable"),
     ),
 )
 

@@ -12,14 +12,19 @@ digital I/O, and device health as native Home Assistant entities.
 One **YachtSense Link** hub device, with related devices linked to it:
 
 - **Cellular** — connection status, signal %, RSRP/RSRQ/SINR, provider, network
-  type, band, IP; data used this cycle, limit, remaining, used %, days left,
-  reset date, used today, and a live **throughput** (MB/h).
-- **Network** — cloud connection, WiFi access point (+SSID), WiFi uplink
-  (+SSID), WiFi clients, connected-device count.
+  type, band, IP, gateway; serving cell ID and location area code; active SIM
+  slot, APN, IPv6 status, mobile-data and roaming flags; data used this cycle,
+  limit, remaining, used %, days left, reset date and day, warning level, used
+  today, and a live **throughput** (MB/h).
+- **Network** — cloud connection, WiFi access point (+SSID, channel, security,
+  bandwidth), WiFi uplink (+SSID), WiFi clients, Ethernet devices,
+  connected-device count, WAN IP/gateway, LAN IP/subnet mask, DHCP pool and
+  lease time, LAN IPv6.
 - **GPS** — position (`device_tracker`).
 - **I/O** — channels 1–4 input voltage, channels 5–8 switch state.
 - **Hub** — input voltage, current draw, temperature, mobile signal, operating
-  time, model/firmware/serial/IMEI.
+  time, model/model number/serial/IMEI, firmware, platform/bundle/router/modem
+  versions, module self-check, and upgrade status.
 
 ### Data usage over time
 
@@ -27,6 +32,22 @@ The cumulative "Data used (cycle)" sensor is a `total_increasing` sensor, so
 Home Assistant's built-in statistics produce **hourly / daily / monthly** usage
 automatically (History → Statistics, or a Statistics card). The billing-cycle
 reset is handled by HA's statistics.
+
+### Firmware compatibility
+
+Firmware **V142.242.530** moved the router's web API to HTTPS and now redirects
+every plain-HTTP request to Raymarine's cloud portal. The integration probes
+both schemes and uses whichever the router actually answers on, so it works on
+old and new firmware without reconfiguration. TLS is not verified: the router
+presents a `CN=yachtsense.raymarine.com` certificate signed by a private
+Raymarine CA, which matches neither the LAN address it is reached on nor any
+public trust root.
+
+That firmware also moved the GNSS detail page (fix quality, HDOP, satellites in
+view, constellation settings) onto a WebSocket on port 7778. It is **not**
+usable: the router hands out an auth token but its own WebSocket server rejects
+token authentication (`TokenAuthNotAllowed`), so the router's own GNSS page is
+broken too. Position still comes from the `GetGps` RPC, which is unaffected.
 
 ### A note on throughput
 

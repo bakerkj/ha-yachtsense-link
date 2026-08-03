@@ -13,8 +13,10 @@ from custom_components.yachtsense_link.api import YsAuthError, YsError
 from custom_components.yachtsense_link.const import (
     DATA_HOME,
     DATA_HUB,
+    DATA_LAN,
     DATA_MOBILE,
     DATA_THROUGHPUT,
+    SLOW_EVERY,
 )
 from custom_components.yachtsense_link.coordinator import YachtSenseLinkCoordinator
 
@@ -119,3 +121,46 @@ def test_throughput_reset_is_not_negative(hass, monkeypatch):
     now[0] += datetime.timedelta(seconds=60)
     after = coord._throughput({"active_sim": 0, "sim": [{"current_data_used": 5}]})
     assert after["rate_mb_per_h"] == 0.0
+
+
+async def test_config_reads_are_polled_slowly_and_carried_forward(hass):
+    # Config methods are read on the first cycle, then carried forward until
+    # SLOW_EVERY cycles have passed -- an embedded router shouldn't field
+    # eleven concurrent RPCs a minute to re-read static settings.
+    class CountingApi(FakeApi):
+        def __init__(self, resp):
+            super().__init__(resp)
+            self.calls = []
+
+        async def call(self, method, params=None):
+            self.calls.append(method)
+            return await super().call(method, params)
+
+    api = CountingApi(responses())
+    coord = YachtSenseLinkCoordinator(hass, api, 60)
+
+    first = await coord._async_update_data()
+    assert api.calls.count("GetWlanSettings") == 1
+    assert first[DATA_LAN]["ip_1"] == "192.0.2.170"
+
+    second = await coord._async_update_data()
+    assert api.calls.count("GetWlanSettings") == 1  # not re-read
+    assert second[DATA_LAN]["ip_1"] == "192.0.2.170"  # still available
+
+    for _ in range(SLOW_EVERY - 2):
+        await coord._async_update_data()
+    await coord._async_update_data()
+    assert api.calls.count("GetWlanSettings") == 2  # refreshed on schedule
+
+
+async def test_failed_config_read_keeps_last_known_value(hass):
+    coord = YachtSenseLinkCoordinator(hass, FakeApi(responses()), 60)
+    good = await coord._async_update_data()
+    assert good[DATA_LAN] is not None
+
+    coord.api = FakeApi(responses(), fail_err=["LanConfigure"])
+    for _ in range(SLOW_EVERY):
+        data = await coord._async_update_data()
+    # The live calls still succeeded, so the LAN settings stay at last-known
+    # rather than blanking entities that describe unchanged configuration.
+    assert data[DATA_LAN]["ip_1"] == "192.0.2.170"
