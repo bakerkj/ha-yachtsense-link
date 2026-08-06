@@ -1,6 +1,6 @@
 [project]
 name = "ha-yachtsense-link"
-version = "0.0.5" # x-release-please-version
+version = "0.0.6" # x-release-please-version
 description = "Home Assistant integration for the Raymarine YachtSense Link marine router."
 requires-python = ">=3.14.4,<3.15"
 dependencies = []
