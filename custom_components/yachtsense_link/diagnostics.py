@@ -59,9 +59,11 @@ TO_REDACT = {
     "SSID",
     "bssid",
     "BSSID",
-    # GPS position.
+    # GPS position, in both the casings the router uses.
     "lat",
     "lng",
+    "Latitude",
+    "Longitude",
     # Connected-client hostnames.
     "DName",
     # Secrets returned by the config reads: GetWlanSettings hands back the AP's

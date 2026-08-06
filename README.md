@@ -44,10 +44,31 @@ Raymarine CA, which matches neither the LAN address it is reached on nor any
 public trust root.
 
 That firmware also moved the GNSS detail page (fix quality, HDOP, satellites in
-view, constellation settings) onto a WebSocket on port 7778. It is **not**
+view, constellation settings) onto a WebSocket on port 7778, which is **not**
 usable: the router hands out an auth token but its own WebSocket server rejects
 token authentication (`TokenAuthNotAllowed`), so the router's own GNSS page is
-broken too. Position still comes from the `GetGps` RPC, which is unaffected.
+broken too.
+
+Position comes from the router's GNSS endpoint: unauthenticated plain HTTP on
+**port 9999** (`GET /getGnss`), returning fix type, HDOP/VDOP/TDOP,
+per-satellite SNR and elevation, and a timestamp that tracks the fix rather than
+the request. That timestamp is what matters — it is what lets a fix which has
+stopped updating be told apart from a current one.
+
+It is the sole position source, deliberately. When the endpoint is unreachable,
+reports no fix, or its timestamp stops advancing, the tracker reports **no
+position**. A source without a timestamp cannot be checked for staleness, so
+there is nothing safe to fall back to.
+
+The endpoint intermittently answers 503 instead of a fix. That means "no data
+this instant", not "no fix", so a failed read is retried once and the last good
+fix is otherwise carried forward, tagged with its age.
+
+> **Security note.** Port 9999 is bound to all interfaces and requires no
+> credentials, and it accepts writes as well as reads. Anyone on the boat's
+> network can read position or change GNSS settings. This is the router's
+> behaviour, not something this integration enables; the integration only ever
+> issues the read.
 
 ### A note on throughput
 

@@ -19,6 +19,7 @@ from custom_components.yachtsense_link.api import (
     YsError,
     YsLockoutError,
 )
+from custom_components.yachtsense_link.const import GNSS_PORT
 
 LOGIN_OK = {"result": {"login": "1"}}
 LOGIN_REJECT = {"result": {"login": "0"}}
@@ -48,13 +49,15 @@ class _Resp:
 class FakeSession:
     """Programmable fake aiohttp ClientSession for the router API."""
 
-    def __init__(self, *, login=LOGIN_OK, rpc=None, get=None):
+    def __init__(self, *, login=LOGIN_OK, rpc=None, get=None, gnss=None):
         # login: payload dict, or an Exception to raise from json()
         # rpc: {method: payload | Exception | [payload, ...] queue}
         # get: {scheme: _Resp | Exception} for scheme probing; defaults to 200s
+        # gnss: _Resp | Exception for the port-9999 GNSS endpoint
         self._login = login
         self._rpc = rpc or {}
         self._get = get or {}
+        self._gnss = gnss
         self.login_posts = 0
         self.rpc_posts: list[str] = []
         self.get_urls: list[str] = []
@@ -64,6 +67,10 @@ class FakeSession:
 
     def get(self, url, timeout=None, ssl=None, allow_redirects=True):
         self.get_urls.append(url)
+        if f":{GNSS_PORT}" in url:
+            if isinstance(self._gnss, Exception):
+                raise self._gnss
+            return self._gnss if self._gnss is not None else _Resp({})
         spec = self._get.get(url.split("://", 1)[0])
         if isinstance(spec, Exception):
             raise spec
@@ -246,3 +253,74 @@ async def test_host_is_matched_exactly_not_by_substring():
     session = FakeSession(get={"https": aiohttp.ClientError("down"), "http": other})
     with pytest.raises(YsError, match="not reachable"):
         await _api(session).login()
+
+
+# --- GNSS endpoint ----------------------------------------------------------
+
+GNSS_OK = {"state": True, "responseTo": "getGnss", "gnss": {"Fix": "2"}}
+# What the endpoint actually returns when it has nothing to hand back.
+GNSS_503 = {"state": False, "error": "Request timeout"}
+
+
+async def test_get_gnss_returns_the_report():
+    session = FakeSession(gnss=_Resp(GNSS_OK))
+    api = YachtSenseLinkApi(session, "192.0.2.1", "admin", "pw")
+    assert (await api.get_gnss())["gnss"]["Fix"] == "2"
+
+
+async def test_get_gnss_uses_plain_http_on_the_gnss_port():
+    session = FakeSession(gnss=_Resp(GNSS_OK))
+    api = YachtSenseLinkApi(session, "192.0.2.1", "admin", "pw")
+    await api.get_gnss()
+    assert session.get_urls == [f"http://192.0.2.1:{GNSS_PORT}/getGnss"]
+
+
+async def test_get_gnss_needs_no_login():
+    # It is a separate unauthenticated service; touching login() here would
+    # burn a credential post against the router's rate-limiter for nothing.
+    session = FakeSession(gnss=_Resp(GNSS_OK))
+    api = YachtSenseLinkApi(session, "192.0.2.1", "admin", "pw")
+    await api.get_gnss()
+    assert session.login_posts == 0
+
+
+async def test_get_gnss_strips_a_port_from_the_configured_host():
+    session = FakeSession(gnss=_Resp(GNSS_OK))
+    api = YachtSenseLinkApi(session, "192.0.2.1:8443", "admin", "pw")
+    await api.get_gnss()
+    assert session.get_urls == [f"http://192.0.2.1:{GNSS_PORT}/getGnss"]
+
+
+async def test_get_gnss_rejects_a_503_body():
+    session = FakeSession(gnss=_Resp(GNSS_503, status=503))
+    api = YachtSenseLinkApi(session, "192.0.2.1", "admin", "pw")
+    with pytest.raises(YsError):
+        await api.get_gnss()
+
+
+async def test_get_gnss_rejects_a_report_without_gnss_data():
+    session = FakeSession(gnss=_Resp({"state": True}))
+    api = YachtSenseLinkApi(session, "192.0.2.1", "admin", "pw")
+    with pytest.raises(YsError):
+        await api.get_gnss()
+
+
+async def test_get_gnss_maps_transport_errors():
+    session = FakeSession(gnss=aiohttp.ClientError("refused"))
+    api = YachtSenseLinkApi(session, "192.0.2.1", "admin", "pw")
+    with pytest.raises(YsError):
+        await api.get_gnss()
+
+
+async def test_get_gnss_maps_a_timeout():
+    session = FakeSession(gnss=_Resp(TimeoutError()))
+    api = YachtSenseLinkApi(session, "192.0.2.1", "admin", "pw")
+    with pytest.raises(YsError):
+        await api.get_gnss()
+
+
+async def test_get_gnss_maps_invalid_json():
+    session = FakeSession(gnss=_Resp(ValueError("not json")))
+    api = YachtSenseLinkApi(session, "192.0.2.1", "admin", "pw")
+    with pytest.raises(YsError):
+        await api.get_gnss()

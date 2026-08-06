@@ -14,6 +14,15 @@ is probed on first use and the working one cached. TLS is not verified: the
 router presents a ``CN=yachtsense.raymarine.com`` certificate signed by a
 private Raymarine CA, which matches neither the LAN IP it is reached on nor any
 public trust root.
+
+Position comes from a separate service: the router answers unauthenticated plain
+HTTP on port 9999 with fix type, DOP, per-satellite detail, and a timestamp that
+tracks the fix rather than the request. That timestamp is what makes a fix which
+has stopped updating detectable, so it is the only position source.
+
+That endpoint intermittently answers 503 ``{"state": false}`` instead of a fix.
+It means "no data this instant", not "no fix", so a failure is retried once and
+otherwise carried forward rather than blanking the position.
 """
 
 from __future__ import annotations
@@ -25,6 +34,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import aiohttp
+
+from .const import GNSS_PATH, GNSS_PORT, GNSS_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -185,6 +196,33 @@ class YachtSenseLinkApi:
             raise YsAuthError("router rejected credentials (check username/password)")
         self._logged_in = True
         _LOGGER.debug("Authenticated to YachtSense Link at %s", self._base)
+
+    async def get_gnss(self) -> dict[str, Any]:
+        """Return the router's detailed GNSS report, or raise YsError.
+
+        Plain HTTP on a fixed port, taking no session and no credentials, so
+        this deliberately bypasses login() and the RPC endpoint. A 503 carries a
+        JSON body with ``state: false``; that is treated the same as a transport
+        error, leaving the caller to retry and then carry forward.
+        """
+        host = urlsplit(f"//{self._host}").hostname or self._host
+        url = f"http://{host}:{GNSS_PORT}{GNSS_PATH}"
+        try:
+            async with self._session.get(
+                url, timeout=aiohttp.ClientTimeout(total=GNSS_TIMEOUT)
+            ) as resp:
+                doc = await resp.json(content_type=None)
+        except aiohttp.ClientError as exc:
+            raise YsError(f"gnss: request failed: {exc}") from exc
+        except TimeoutError as exc:
+            raise YsError("gnss: request timed out") from exc
+        except ValueError as exc:
+            raise YsError(f"gnss: invalid JSON: {exc}") from exc
+
+        if not isinstance(doc, dict) or not doc.get("state") or "gnss" not in doc:
+            err = doc.get("error") if isinstance(doc, dict) else None
+            raise YsError(f"gnss: no data ({err or 'unexpected response'})")
+        return doc
 
     async def call(self, method: str, params: dict[str, Any] | None = None) -> Any:
         if not self._logged_in:

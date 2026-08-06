@@ -82,8 +82,6 @@ HUB: dict[str, Any] = {
     "MobileSignalStrength": -55,
 }
 
-GPS: dict[str, Any] = {"lat": 40.0, "lng": -70.0}
-
 CONNECTED: dict[str, Any] = {
     "dev_list": [
         {
@@ -194,6 +192,30 @@ LAN: dict[str, Any] = {
 }
 
 
+# The GNSS endpoint reports every scalar as a string, including the booleans.
+GNSS: dict[str, Any] = {
+    "responseTo": "getGnss",
+    "state": True,
+    "timestamp": "2026-08-06T02:18:31Z",
+    "gnss": {
+        "Fix": "2",
+        "Latitude": "43.05803298950195",
+        "Longitude": "-70.72698211669922",
+        "HDOP": "0.47999998927116394",
+        "VDOP": "82.0",
+        "TDOP": "0.4699999988079071",
+        "ModuleStatus": "True",
+        "InternalGPSEnabled": "True",
+        "EnableConstellations": ["GPS", "GALILEO", "GLONASS"],
+        "SatsInView": [
+            {"svId": "2", "snr": 48.0, "isUsedInFix": "True", "isTracked": "True"},
+            {"svId": "10", "snr": 52.0, "isUsedInFix": "True", "isTracked": "True"},
+            {"svId": "23", "snr": 31.0, "isUsedInFix": "False", "isTracked": "True"},
+        ],
+    },
+}
+
+
 def responses() -> dict[str, Any]:
     """method -> result, keyed by the RPC method names the coordinator calls."""
     return {
@@ -201,7 +223,6 @@ def responses() -> dict[str, Any]:
         "GetMobile": MOBILE,
         "GetHubInfo": HUB,
         "GetConnectedDevices": CONNECTED,
-        "GetGps": GPS,
         "IoConfigure": IO,
         "GetModulesSelfCheckStatus": SELFCHECK,
         "GetUpgradeStatusAndProgress": UPGRADE,

@@ -32,6 +32,7 @@ from homeassistant.helpers.typing import StateType
 
 from .const import (
     DATA_APN,
+    DATA_GNSS,
     DATA_HOME,
     DATA_HUB,
     DATA_IO,
@@ -41,12 +42,14 @@ from .const import (
     DATA_UPGRADE,
     DATA_WLAN,
     DEV_CELLULAR,
+    DEV_GPS,
     DEV_HUB,
     DEV_IO,
     DEV_NETWORK,
     DEV_WIFI_AP,
     DEV_WIFI_UPLINK,
     DOMAIN,
+    GNSS_NO_FIX,
 )
 from .entity import YsEntity
 
@@ -75,6 +78,43 @@ def _sim(d: dict[str, Any]) -> dict[str, Any]:
 
 def _hub(d: dict[str, Any]) -> dict[str, Any]:
     return d.get(DATA_HUB) or {}
+
+
+def _gnss(d: dict[str, Any]) -> dict[str, Any]:
+    return (d.get(DATA_GNSS) or {}).get("gnss") or {}
+
+
+def _fix_type(d: dict[str, Any]) -> str | None:
+    """Fix type, sharing GNSS_NO_FIX with the position check in device_tracker."""
+    raw = _gnss(d).get("Fix")
+    if raw is None:
+        return None
+    return "No fix" if str(raw) in GNSS_NO_FIX else _FIX_TYPES.get(str(raw))
+
+
+def _gnum(v: Any) -> float | None:
+    """Numbers from the GNSS report arrive as strings, unlike the RPC data."""
+    if isinstance(v, str):
+        try:
+            return float(v)
+        except ValueError:
+            return None
+    return _num(v)
+
+
+def _sats(d: dict[str, Any], *, used_only: bool) -> int | None:
+    """Satellite count, or None when there is no report to count from."""
+    sats = _gnss(d).get("SatsInView")
+    if not isinstance(sats, list):
+        return None
+    if not used_only:
+        return len(sats)
+    # Values arrive as the strings "True"/"False", not booleans.
+    return sum(
+        1
+        for s in sats
+        if isinstance(s, dict) and str(s.get("isUsedInFix", "")).lower() == "true"
+    )
 
 
 def _num(v: Any) -> float | None:
@@ -220,6 +260,9 @@ class YsSensorDescription(SensorEntityDescription):
     group: str
     value_fn: Callable[[dict[str, Any]], StateType]
 
+
+# Solution dimensionality, for the values GNSS_NO_FIX does not already cover.
+_FIX_TYPES: dict[str, str] = {"2": "2D", "3": "3D"}
 
 _DATA: dict[str, Any] = {
     "device_class": SensorDeviceClass.DATA_SIZE,
@@ -690,6 +733,51 @@ SENSORS: tuple[YsSensorDescription, ...] = (
         icon="mdi:package-down",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: _text((d.get(DATA_UPGRADE) or {}).get("steps")),
+    ),
+    YsSensorDescription(
+        key="gnss_fix_type",
+        name="Fix type",
+        group=DEV_GPS,
+        icon="mdi:crosshairs-gps",
+        value_fn=_fix_type,
+    ),
+    YsSensorDescription(
+        key="gnss_satellites_used",
+        name="Satellites in fix",
+        group=DEV_GPS,
+        icon="mdi:satellite-variant",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: _sats(d, used_only=True),
+    ),
+    YsSensorDescription(
+        key="gnss_satellites_visible",
+        name="Satellites in view",
+        group=DEV_GPS,
+        icon="mdi:satellite-variant",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _sats(d, used_only=False),
+    ),
+    YsSensorDescription(
+        key="gnss_hdop",
+        name="HDOP",
+        group=DEV_GPS,
+        icon="mdi:crosshairs",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda d: _gnum(_gnss(d).get("HDOP")),
+    ),
+    YsSensorDescription(
+        key="gnss_fix_age",
+        name="Fix age",
+        group=DEV_GPS,
+        icon="mdi:clock-alert-outline",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _num((d.get(DATA_GNSS) or {}).get("fix_age")),
     ),
 )
 
