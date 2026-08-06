@@ -9,7 +9,11 @@ import pytest
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
-from custom_components.yachtsense_link.api import YsAuthError, YsError
+from custom_components.yachtsense_link.api import (
+    YsAuthError,
+    YsError,
+    YsUnreachableError,
+)
 from custom_components.yachtsense_link.const import (
     DATA_GNSS,
     DATA_HOME,
@@ -35,6 +39,7 @@ class FakeApi:
         login_error=None,
         gnss=_UNSET,
         gnss_fail=0,
+        gnss_error=None,
     ):
         self.resp = resp
         self.fail_auth = set(fail_auth)
@@ -43,6 +48,7 @@ class FakeApi:
         self.gnss = GNSS if gnss is _UNSET else gnss
         # Number of leading get_gnss() calls that raise, to exercise the retry.
         self.gnss_fail = gnss_fail
+        self.gnss_error = gnss_error
         self.gnss_calls = 0
 
     async def login(self):
@@ -52,7 +58,7 @@ class FakeApi:
     async def get_gnss(self):
         self.gnss_calls += 1
         if self.gnss_calls <= self.gnss_fail or self.gnss is None:
-            raise YsError("gnss: no data")
+            raise (self.gnss_error or YsError)("gnss: no data")
         return self.gnss
 
     async def call(self, method, params=None):
@@ -337,3 +343,30 @@ async def test_backlogged_replies_are_caught_by_observation_lag(hass):
     coord.api = FakeApi(responses(), gnss=behind)
     data = await coord._async_update_data()
     assert data[DATA_GNSS]["observation_lag"] >= 290.0
+
+
+async def test_an_unreachable_gnss_read_is_retried(hass):
+    # Nothing reached the service, so no reply was generated and none was left
+    # waiting for the next caller: trying again costs nothing.
+    api = FakeApi(responses(), gnss_fail=1, gnss_error=YsUnreachableError)
+    coord = YachtSenseLinkCoordinator(hass, api, 60)
+    data = await coord._async_update_data()
+    assert api.gnss_calls == 2
+    assert data[DATA_GNSS]["gnss"]["Fix"] == "2"
+
+
+async def test_a_timed_out_gnss_read_is_not_retried(hass):
+    # The service took the request, so a reply is already owed to us; asking
+    # again would collect that stale reply and leave another in its place.
+    api = FakeApi(responses(), gnss_fail=1, gnss_error=YsError)
+    coord = YachtSenseLinkCoordinator(hass, api, 60)
+    await coord._async_update_data()
+    assert api.gnss_calls == 1
+
+
+async def test_unreachable_gives_up_after_two_attempts(hass):
+    api = FakeApi(responses(), gnss=None, gnss_error=YsUnreachableError)
+    coord = YachtSenseLinkCoordinator(hass, api, 60)
+    data = await coord._async_update_data()
+    assert api.gnss_calls == 2
+    assert data[DATA_GNSS] is None

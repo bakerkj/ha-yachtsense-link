@@ -62,6 +62,15 @@ class YsLockoutError(YsAuthError):
     """The router is rate-limiting logins; back off before retrying."""
 
 
+class YsUnreachableError(YsError):
+    """The request never reached the service, so nothing was left behind.
+
+    Distinguished from every other failure because it is the only one that is
+    free to retry: no connection means no reply was generated, so there is no
+    orphaned reply waiting to be handed to the next caller.
+    """
+
+
 def new_cookie_jar() -> aiohttp.CookieJar:
     """A cookie jar that keeps cookies for a bare-IP host.
 
@@ -226,8 +235,15 @@ class YachtSenseLinkApi:
                 url, timeout=aiohttp.ClientTimeout(total=GNSS_TIMEOUT)
             ) as resp:
                 doc = await resp.json(content_type=None)
+        # Must precede ClientError, of which it is a subclass: this is the only
+        # failure that never reached the service, and so the only retryable one.
+        except aiohttp.ClientConnectionError as exc:
+            raise YsUnreachableError(f"gnss: could not connect: {exc}") from exc
         except aiohttp.ClientError as exc:
             raise YsError(f"gnss: request failed: {exc}") from exc
+        # Our own deadline, set past the service's own. Hitting it means the
+        # request was accepted and a reply is already owed to us, so a retry
+        # would merely queue behind it.
         except TimeoutError as exc:
             raise YsError("gnss: request timed out") from exc
         except ValueError as exc:

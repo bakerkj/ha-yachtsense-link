@@ -27,7 +27,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .api import YachtSenseLinkApi, YsAuthError, YsError
+from .api import YachtSenseLinkApi, YsAuthError, YsError, YsUnreachableError
 from .const import (
     DATA_APN,
     DATA_CONNECTED,
@@ -164,20 +164,23 @@ class YachtSenseLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _fetch_gnss(self) -> dict[str, Any] | None:
         """Read the GNSS endpoint once, or None if the read fails.
 
-        Deliberately not retried. Replies from this endpoint carry no request
-        identifier, so a read that times out still leaves its reply waiting to
-        be handed to whoever asks next. A retry therefore collects the timed-out
-        request's reply rather than a fresh one, and leaves its own behind for
-        the following cycle -- turning one missed read into a standing offset,
-        and adding another for every extra request that times out in its turn.
-        One read a cycle keeps that from compounding; a miss is carried forward
-        instead.
+        Retried only when the request never reached the service. Replies carry
+        no request identifier, so a request that was accepted and then timed
+        out leaves its reply waiting for whoever asks next: retrying that
+        collects the stale reply rather than a fresh one and leaves its own
+        behind, doubling the cycle's exposure to whatever created the offset.
+        A refused connection leaves nothing behind, so it costs nothing to try
+        again. Anything still failing is carried forward.
         """
-        try:
-            return await self.api.get_gnss()
-        except YsError as exc:
-            _LOGGER.debug("GNSS read failed: %s", exc)
-            return None
+        for attempt in (1, 2):
+            try:
+                return await self.api.get_gnss()
+            except YsUnreachableError as exc:
+                _LOGGER.debug("GNSS unreachable (attempt %d): %s", attempt, exc)
+            except YsError as exc:
+                _LOGGER.debug("GNSS read failed: %s", exc)
+                return None
+        return None
 
     def _merge_gnss(self, fresh: dict[str, Any] | None) -> dict[str, Any] | None:
         """Attach a locally-measured fix age, carrying forward on failure."""
