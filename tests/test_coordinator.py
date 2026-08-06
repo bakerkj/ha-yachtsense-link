@@ -234,7 +234,7 @@ async def test_gnss_is_carried_forward_but_ages(hass):
     await coord._async_update_data()
 
     # Pretend the last good fix was seen a while ago, then lose the endpoint.
-    coord._gnss_stamp_at -= 120.0
+    coord._gnss_tick_at -= 120.0
     coord.api = FakeApi(responses(), gnss=None)
     data = await coord._async_update_data()
     # The position is still there, but it is no longer claiming to be fresh.
@@ -242,22 +242,32 @@ async def test_gnss_is_carried_forward_but_ages(hass):
     assert data[DATA_GNSS]["fix_age"] >= 120.0
 
 
-async def test_unchanged_timestamp_keeps_ageing(hass):
-    # A frozen cache answers every poll happily with the same timestamp; the
-    # age must keep climbing rather than resetting on each successful read.
+async def test_unchanged_counter_keeps_ageing(hass):
+    # A stalled receiver answers every poll happily, with a freshly stamped
+    # reply wrapped around an unchanged observation counter; the age must keep
+    # climbing rather than resetting on each successful read.
     coord = YachtSenseLinkCoordinator(hass, FakeApi(responses()), 60)
     await coord._async_update_data()
-    coord._gnss_stamp_at -= 200.0
+    coord._gnss_tick_at -= 200.0
     data = await coord._async_update_data()
     assert data[DATA_GNSS]["fix_age"] >= 200.0
 
 
-async def test_new_timestamp_resets_the_age(hass):
+async def test_a_new_counter_resets_the_age(hass):
     coord = YachtSenseLinkCoordinator(hass, FakeApi(responses()), 60)
     await coord._async_update_data()
-    coord._gnss_stamp_at -= 200.0
+    coord._gnss_tick_at -= 200.0
 
-    moved = {**GNSS, "timestamp": "2026-08-06T02:20:00Z"}
+    moved = {
+        **GNSS,
+        "gnss": {
+            **GNSS["gnss"],
+            "SatsInView": [
+                {**s, "snrLastUpdateTimeMs": "93999999"}
+                for s in GNSS["gnss"]["SatsInView"]
+            ],
+        },
+    }
     coord.api = FakeApi(responses(), gnss=moved)
     data = await coord._async_update_data()
     assert data[DATA_GNSS]["fix_age"] < 10.0
@@ -321,3 +331,26 @@ async def test_gnss_retry_is_not_delayed_when_the_first_attempt_succeeds(
     coord = YachtSenseLinkCoordinator(hass, FakeApi(responses()), 60)
     await coord._async_update_data()
     assert slept == []  # happy path never waits
+
+
+async def test_a_fresh_timestamp_does_not_hide_a_stalled_receiver(hass):
+    # The report's timestamp is stamped when the reply is composed, so it keeps
+    # advancing even while the position behind it is frozen. Liveness must come
+    # from the observation counter alone, or a stalled receiver reads as live.
+    coord = YachtSenseLinkCoordinator(hass, FakeApi(responses()), 60)
+    await coord._async_update_data()
+    coord._gnss_tick_at -= 200.0
+
+    restamped = {**GNSS, "timestamp": "2026-08-06T09:99:99Z"}
+    coord.api = FakeApi(responses(), gnss=restamped)
+    data = await coord._async_update_data()
+    assert data[DATA_GNSS]["fix_age"] >= 200.0
+
+
+async def test_a_report_without_a_counter_does_not_blank_forever(hass):
+    # No counter means liveness is unknown, not stale. Reporting an age here
+    # would blank the position permanently on the very first poll.
+    stripped = {**GNSS, "gnss": {**GNSS["gnss"], "SatsInView": []}}
+    coord = YachtSenseLinkCoordinator(hass, FakeApi(responses(), gnss=stripped), 60)
+    data = await coord._async_update_data()
+    assert data[DATA_GNSS]["fix_age"] is None

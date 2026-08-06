@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import timedelta
-from typing import Any
+from typing import Any, Final
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -79,6 +79,30 @@ _SLOW_CALLS: tuple[tuple[str, str, dict[str, Any] | None], ...] = (
 )
 
 
+# Distinct from None, which is a legitimate "the report carried no counter".
+_UNSEEN: Final = object()
+
+
+def _module_tick(report: dict[str, Any]) -> int | None:
+    """The receiver's observation counter, or None if the report lacks one.
+
+    Every satellite entry carries the same value; the newest is taken so a
+    single malformed entry cannot hold the counter back.
+    """
+    sats = (report.get("gnss") or {}).get("SatsInView")
+    if not isinstance(sats, list):
+        return None
+    ticks: list[int] = []
+    for sat in sats:
+        if not isinstance(sat, dict):
+            continue
+        try:
+            ticks.append(int(sat["snrLastUpdateTimeMs"]))
+        except KeyError, TypeError, ValueError:
+            continue
+    return max(ticks) if ticks else None
+
+
 def _active_sim(mobile: dict[str, Any] | None) -> dict[str, Any]:
     sims = (mobile or {}).get("sim") or []
     idx = (mobile or {}).get("active_sim") or 0
@@ -108,12 +132,15 @@ class YachtSenseLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._slow: dict[str, Any] = {key: None for key, _m, _p in _SLOW_CALLS}
         # Last good GNSS report, carried forward when a poll comes back empty.
         self._gnss: dict[str, Any] | None = None
-        # Age is measured from when a *new* timestamp was first seen locally,
-        # not by subtracting the router's clock from ours: the two are set
-        # independently and a skew between them would otherwise be read as a
-        # stale fix (or hide a real one).
-        self._gnss_stamp: str | None = None
-        self._gnss_stamp_at: float = 0.0
+        # Liveness is judged from the receiver's own observation counter rather
+        # than the report's timestamp. The timestamp is stamped when the reply
+        # is composed, so it advances even when the position behind it does
+        # not; the counter only moves when the receiver produces a new
+        # observation. Age is then measured from when that counter was last
+        # seen to change locally, which needs no comparison between the
+        # router's clock and ours.
+        self._gnss_tick: Any = _UNSEEN
+        self._gnss_tick_at: float = 0.0
 
     async def _fetch_gnss(self) -> dict[str, Any] | None:
         """Read the GNSS endpoint, retrying once, or None if both attempts fail.
@@ -137,17 +164,21 @@ class YachtSenseLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Attach a locally-measured fix age, carrying forward on failure."""
         now = self.hass.loop.time()
         if fresh is not None:
-            stamp = fresh.get("timestamp")
-            if stamp != self._gnss_stamp:
-                self._gnss_stamp = stamp
-                self._gnss_stamp_at = now
+            tick = _module_tick(fresh)
+            if tick != self._gnss_tick:
+                self._gnss_tick = tick
+                self._gnss_tick_at = now
             self._gnss = fresh
         if self._gnss is None:
             return None
-        # A failed poll must not look like a fresh fix, and neither must a fix
-        # whose timestamp has stopped advancing: both are reported with an age
-        # so the consumer can decide, rather than being passed off as current.
-        return {**self._gnss, "fix_age": now - self._gnss_stamp_at}
+        # A failed poll must not look like a fresh fix, and neither must a
+        # report whose observation counter has stopped moving: both are
+        # reported with an age so the consumer can decide, rather than being
+        # passed off as current. An age of None means the counter was absent,
+        # so liveness is simply unknown -- report the fix rather than blank it
+        # on a measurement we never took.
+        stale = self._gnss_tick is _UNSEEN or self._gnss_tick is None
+        return {**self._gnss, "fix_age": None if stale else now - self._gnss_tick_at}
 
     async def _async_update_data(self) -> dict[str, Any]:
         # Log in once up front so the concurrent calls below share the session.

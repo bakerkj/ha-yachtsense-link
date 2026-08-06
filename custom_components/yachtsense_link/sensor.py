@@ -49,6 +49,7 @@ from .const import (
     DEV_WIFI_AP,
     DEV_WIFI_UPLINK,
     DOMAIN,
+    GNSS_FIX_LABELS,
     GNSS_NO_FIX,
 )
 from .entity import YsEntity
@@ -85,11 +86,11 @@ def _gnss(d: dict[str, Any]) -> dict[str, Any]:
 
 
 def _fix_type(d: dict[str, Any]) -> str | None:
-    """Fix type, sharing GNSS_NO_FIX with the position check in device_tracker."""
+    """Fix quality, labelled the way the router's own GNSS page labels it."""
     raw = _gnss(d).get("Fix")
     if raw is None:
         return None
-    return "No fix" if str(raw) in GNSS_NO_FIX else _FIX_TYPES.get(str(raw))
+    return GNSS_FIX_LABELS.get(str(raw), "No fix" if str(raw) in GNSS_NO_FIX else None)
 
 
 def _gnum(v: Any) -> float | None:
@@ -260,9 +261,6 @@ class YsSensorDescription(SensorEntityDescription):
     group: str
     value_fn: Callable[[dict[str, Any]], StateType]
 
-
-# Solution dimensionality, for the values GNSS_NO_FIX does not already cover.
-_FIX_TYPES: dict[str, str] = {"2": "2D", "3": "3D"}
 
 _DATA: dict[str, Any] = {
     "device_class": SensorDeviceClass.DATA_SIZE,

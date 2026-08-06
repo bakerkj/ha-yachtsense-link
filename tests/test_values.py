@@ -191,7 +191,7 @@ def test_empty_data_is_safe():
 @pytest.mark.parametrize(
     ("key", "expected"),
     [
-        ("gnss_fix_type", "2D"),
+        ("gnss_fix_type", "Differential fix"),
         ("gnss_satellites_used", 2),  # two of three flagged isUsedInFix
         ("gnss_satellites_visible", 3),
         ("gnss_fix_age", 4.0),
@@ -260,8 +260,10 @@ def test_fix_type_and_position_agree_on_no_fix(fix):
     assert _position(data) == (None, None)
 
 
-@pytest.mark.parametrize(("fix", "label"), [("2", "2D"), ("3", "3D")])
+@pytest.mark.parametrize(("fix", "label"), [("1", "Fix"), ("2", "Differential fix")])
 def test_fix_type_and_position_agree_on_a_real_fix(fix, label):
+    # Fix 1 is an ordinary fix and 2 a differential one -- both are usable
+    # positions. Only 0 means the receiver has no solution.
     data = {
         **_merged(),
         DATA_GNSS: {**GNSS, "gnss": {**GNSS["gnss"], "Fix": fix}, "fix_age": 1.0},
@@ -285,3 +287,10 @@ def test_position_rejects_the_null_island_sentinel():
 def test_position_accepts_a_fix_just_inside_the_age_limit():
     fresh = {**_merged(), DATA_GNSS: {**GNSS, "fix_age": GNSS_MAX_FIX_AGE - 1}}
     assert _position(fresh) != (None, None)
+
+
+def test_unknown_liveness_still_reports_a_position():
+    # fix_age None means the report carried no observation counter, so
+    # staleness is unknown -- that must not be treated as stale.
+    data = {**_merged(), DATA_GNSS: {**GNSS, "fix_age": None}}
+    assert _position(data) != (None, None)
