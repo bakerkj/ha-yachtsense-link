@@ -118,7 +118,7 @@ BINARY_SENSORS: tuple[YsBinaryDescription, ...] = (
         ),
     ),
     YsBinaryDescription(
-        key="net_wifi_ap",
+        key="wifi_ap_status",
         name="Status",
         group=DEV_WIFI_AP,
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
@@ -127,7 +127,7 @@ BINARY_SENSORS: tuple[YsBinaryDescription, ...] = (
         ),
     ),
     YsBinaryDescription(
-        key="net_wifi_uplink",
+        key="wifi_uplink_status",
         name="Status",
         group=DEV_WIFI_UPLINK,
         device_class=BinarySensorDeviceClass.CONNECTIVITY,

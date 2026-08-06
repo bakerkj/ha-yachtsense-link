@@ -71,25 +71,25 @@ def _binaries() -> dict:
 @pytest.mark.parametrize(
     ("key", "expected"),
     [
-        ("cellular_signal", 94),  # csq 29/31 -> 94%
+        ("cellular_signal_quality", 94),  # csq 29/31 -> 94%
         ("cellular_rsrp", -84.0),
         ("cellular_provider", "TestCarrier"),
         ("cellular_band", "LTE BAND 4"),
-        ("cellular_data_used", 4270.0),
-        ("cellular_data_limit", 3072.0),
+        ("cellular_data_used_cycle", 4270.0),
+        ("cellular_plan_limit", 3072.0),
         ("cellular_data_remaining", -1198.0),  # over the plan cap
-        ("cellular_data_used_pct", 139.0),
+        ("cellular_plan_used_cycle", 139.0),
         ("cellular_days_left", 23),
         ("cellular_data_today", 218.0),
         ("cellular_throughput", 123.4),
         ("hub_voltage", 13.1),
         ("hub_current", 0.458),
-        ("hub_signal", -55.0),
+        ("cellular_signal_strength", -55.0),
         ("hub_model", "YachtSense Link router"),
         ("hub_serial", "TESTSERIAL01"),
-        ("net_wifi_ap_ssid", "TestAP"),
-        ("net_wifi_uplink_ssid", None),  # sta_ssid is "-"
-        ("net_wifi_clients", 0),
+        ("wifi_ap_ssid", "TestAP"),
+        ("wifi_uplink_ssid", None),  # sta_ssid is "-"
+        ("wifi_ap_clients", 0),
         ("net_clients", 2),
         ("io_ch1_voltage", 12.5),
         ("io_ch4_voltage", None),  # channel disabled
@@ -101,9 +101,9 @@ def _binaries() -> dict:
         ("cellular_gateway", "192.0.2.254"),
         ("cellular_cycle_reset_day", 17),
         ("cellular_data_warning", 2048.0),
-        ("net_wifi_ap_channel", "Auto"),  # Channel 0
-        ("net_wifi_ap_security", "WPA2"),  # SecurityMode 2
-        ("net_wifi_ap_bandwidth", "40 MHz"),  # HtMode 2
+        ("wifi_ap_channel", "Auto"),  # Channel 0
+        ("wifi_ap_security", "WPA2"),  # SecurityMode 2
+        ("wifi_ap_bandwidth", "40 MHz"),  # HtMode 2
         ("net_wan_ip", None),  # "--" placeholder, not an address
         ("net_wan_gateway", None),
         ("net_eth_clients", 2),
@@ -132,7 +132,7 @@ def test_apn_follows_the_active_sim():
 
 
 def test_wifi_uplink_signal():
-    s = _sensors()["net_wifi_uplink_signal"]
+    s = _sensors()["wifi_uplink_signal"]
     # 0 dBm means "uplink off / no reading" -> suppressed.
     assert s.value_fn(_merged()) is None
     # A real negative RSSI passes through.
@@ -151,8 +151,8 @@ def test_temperature_and_operating_time():
     [
         ("cellular_status", True),  # ipv4netstatus 1
         ("net_cloud", True),
-        ("net_wifi_ap", True),
-        ("net_wifi_uplink", False),  # sta status 0
+        ("wifi_ap_status", True),
+        ("wifi_uplink_status", False),  # sta status 0
         ("io_ch5", True),  # types 1
         ("io_ch6", False),
         # --- added for firmware V142.242.530 ---

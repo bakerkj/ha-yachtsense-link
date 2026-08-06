@@ -12,7 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DATA_GNSS, DEV_GPS, DOMAIN, GNSS_MAX_FIX_AGE, GNSS_NO_FIX
+from .const import DATA_GNSS, DEV_GNSS, DOMAIN, GNSS_MAX_FIX_AGE, GNSS_NO_FIX
 from .entity import YsEntity
 
 
@@ -65,7 +65,7 @@ class YsDeviceTracker(YsEntity, TrackerEntity):
     _attr_icon = "mdi:crosshairs-gps"
 
     def __init__(self, coordinator: Any) -> None:
-        super().__init__(coordinator, DEV_GPS, "gps_position")
+        super().__init__(coordinator, DEV_GNSS, "gnss_position")
         self._pos: tuple[float | None, float | None] = _position(coordinator.data or {})
 
     def _handle_coordinator_update(self) -> None:
