@@ -944,7 +944,7 @@ wheels = [
 
 [[package]]
 name = "ha-yachtsense-link"
-version = "0.0.6"
+version = "0.0.7"
 source = { virtual = "." }
 
 [package.dev-dependencies]
