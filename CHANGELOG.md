@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.5](https://github.com/bakerkj/ha-yachtsense-link/compare/v0.0.4...v0.0.5) (2026-08-06)
+
+
+### Bug Fixes
+
+* correct GNSS fix values and judge liveness by receiver counter ([#20](https://github.com/bakerkj/ha-yachtsense-link/issues/20)) ([103c45c](https://github.com/bakerkj/ha-yachtsense-link/commit/103c45c70acc4751cf32779d1bd0f510681d0651))
+* **pre-commit:** set default_stages so hooks skip commit-msg by default ([#22](https://github.com/bakerkj/ha-yachtsense-link/issues/22)) ([89737af](https://github.com/bakerkj/ha-yachtsense-link/commit/89737afe6775442ebdb42d2d59d755ae714e060f))
+
+
+### Miscellaneous Chores
+
+* **deps:** pin uv to 0.12.2 ([#21](https://github.com/bakerkj/ha-yachtsense-link/issues/21)) ([ad77f87](https://github.com/bakerkj/ha-yachtsense-link/commit/ad77f87799471d257215129d074155b3031d4d49))
+
 ## [0.0.4](https://github.com/bakerkj/ha-yachtsense-link/compare/v0.0.3...v0.0.4) (2026-08-06)
 
 
