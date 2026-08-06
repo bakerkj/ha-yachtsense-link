@@ -38,11 +38,17 @@ def _position(d: dict[str, Any]) -> tuple[float | None, float | None]:
     g = report.get("gnss") or {}
     if str(g.get("Fix", "0")) in GNSS_NO_FIX:
         return None, None
-    # Three independent ways a report can be old, none of which the payload
-    # distinguishes from a live fix on its own: the receiver stalled, nothing
-    # was read for a while, or what was read came from a backlog. Any one of
-    # them past the limit means there is no position worth publishing.
-    for key in ("fix_age", "report_age", "observation_lag"):
+    # Two ways a report can be old, neither of which the payload distinguishes
+    # from a live fix on its own: the receiver stalled, or nothing was read for
+    # a while. Both are measured entirely in our own clock, so they cannot
+    # drift.
+    #
+    # observation_lag is deliberately NOT among them. It is the difference
+    # between our clock and the receiver's counter, and that counter does not
+    # advance at wall-clock rate, so the difference grows without bound and
+    # would eventually retire every position regardless of its age. It is
+    # published as an attribute only.
+    for key in ("fix_age", "report_age"):
         age = report.get(key)
         if isinstance(age, (int, float)) and age > GNSS_MAX_FIX_AGE:
             return None, None
