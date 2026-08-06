@@ -55,7 +55,12 @@ GNSS_TIMEOUT: Final = 6.0
 # attaches, before it stops counting as a live position. Deliberately tight:
 # reporting no position costs little, whereas presenting a frozen one as live is
 # the failure this endpoint exists to avoid.
-GNSS_MAX_FIX_AGE: Final = 90.0
+# Note this is really a count of missed polls, since both ages can only change
+# in poll-interval steps: three at the default interval, more at shorter ones.
+# Set so a single missed observation, which happens routinely, cannot retire a
+# position -- only a run of them, which means the receiver has genuinely
+# stopped.
+GNSS_MAX_FIX_AGE: Final = 180.0
 # "Fix" values meaning the receiver has no solution. This is NOT the GSA
 # convention: on this router 0 is no fix, 1 is an ordinary fix and 2 is a
 # differential fix, so anything above zero is a usable position. Shared so the

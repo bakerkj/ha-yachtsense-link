@@ -289,6 +289,36 @@ def test_position_accepts_a_fix_just_inside_the_age_limit():
     assert _position(fresh) != (None, None)
 
 
+def test_observation_lag_never_blanks_the_position():
+    # Measured in production at over four hours while the receiver held a good
+    # fix and reads were succeeding: it does not track staleness and must not
+    # retire a position.
+    data = {
+        **_merged(),
+        DATA_GNSS: {
+            **GNSS,
+            "fix_age": 1.0,
+            "report_age": 1.0,
+            "observation_lag": 14893.6,
+        },
+    }
+    assert _position(data) != (None, None)
+
+
+@pytest.mark.parametrize("key", ["fix_age", "report_age"])
+def test_the_clock_based_ages_do_blank_the_position(key):
+    data = {
+        **_merged(),
+        DATA_GNSS: {
+            **GNSS,
+            "fix_age": 1.0,
+            "report_age": 1.0,
+            key: GNSS_MAX_FIX_AGE + 1,
+        },
+    }
+    assert _position(data) == (None, None)
+
+
 def test_unknown_liveness_still_reports_a_position():
     # fix_age None means the report carried no observation counter, so
     # staleness is unknown -- that must not be treated as stale.

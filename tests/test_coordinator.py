@@ -320,10 +320,10 @@ async def test_a_degraded_report_does_not_reset_an_expiring_fix(hass):
     assert data[DATA_GNSS]["fix_age"] >= 80.0  # kept ageing, not reset
 
 
-async def test_backlogged_replies_are_caught_by_observation_lag(hass):
-    # A steady backlog hands back replies whose counter advances every poll, so
-    # they look fresh by every other measure. Only the gap between the counter
-    # and our own clock reveals that the observation itself is old.
+async def test_observation_lag_is_reported_as_a_diagnostic(hass):
+    # Published for visibility only. It is the gap between our clock and the
+    # receiver's counter, which do not advance together, so it grows without
+    # bound and must never gate the position -- see test_values.
     coord = YachtSenseLinkCoordinator(hass, FakeApi(responses()), 60)
     first = await coord._async_update_data()
     assert first[DATA_GNSS]["observation_lag"] == pytest.approx(0.0, abs=1.0)
