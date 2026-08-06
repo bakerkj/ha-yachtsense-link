@@ -42,7 +42,7 @@ from .const import (
     DATA_UPGRADE,
     DATA_WLAN,
     DEV_CELLULAR,
-    DEV_GPS,
+    DEV_GNSS,
     DEV_HUB,
     DEV_IO,
     DEV_NETWORK,
@@ -274,8 +274,8 @@ _DATA_TOTAL: dict[str, Any] = {
 SENSORS: tuple[YsSensorDescription, ...] = (
     # --- cellular ---
     YsSensorDescription(
-        key="cellular_signal",
-        name="Signal",
+        key="cellular_signal_quality",
+        name="Signal quality",
         group=DEV_CELLULAR,
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -343,16 +343,16 @@ SENSORS: tuple[YsSensorDescription, ...] = (
         value_fn=lambda d: _mob(d).get("ipv4address") or None,
     ),
     YsSensorDescription(
-        key="cellular_data_used",
-        name="Data used (cycle)",
+        key="cellular_data_used_cycle",
+        name="Data used this cycle",
         group=DEV_CELLULAR,
         icon="mdi:database",
         value_fn=lambda d: _ro(_num(_sim(d).get("current_data_used")), 1),
         **_DATA_TOTAL,
     ),
     YsSensorDescription(
-        key="cellular_data_limit",
-        name="Data limit",
+        key="cellular_plan_limit",
+        name="Plan limit",
         group=DEV_CELLULAR,
         icon="mdi:database-arrow-up",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -368,8 +368,8 @@ SENSORS: tuple[YsSensorDescription, ...] = (
         **_DATA,
     ),
     YsSensorDescription(
-        key="cellular_data_used_pct",
-        name="Data used %",
+        key="cellular_plan_used_cycle",
+        name="Plan used this cycle",
         group=DEV_CELLULAR,
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -438,9 +438,9 @@ SENSORS: tuple[YsSensorDescription, ...] = (
         value_fn=_temp_c,
     ),
     YsSensorDescription(
-        key="hub_signal",
-        name="Mobile signal",
-        group=DEV_HUB,
+        key="cellular_signal_strength",
+        name="Signal strength",
+        group=DEV_CELLULAR,
         device_class=SensorDeviceClass.SIGNAL_STRENGTH,
         native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -481,16 +481,16 @@ SENSORS: tuple[YsSensorDescription, ...] = (
         value_fn=lambda d: _hub(d).get("serial_num") or None,
     ),
     YsSensorDescription(
-        key="hub_imei",
+        key="cellular_imei",
         name="IMEI",
-        group=DEV_HUB,
+        group=DEV_CELLULAR,
         icon="mdi:information-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: _hub(d).get("IMEI") or None,
     ),
     # --- network ---
     YsSensorDescription(
-        key="net_wifi_ap_ssid",
+        key="wifi_ap_ssid",
         name="SSID",
         group=DEV_WIFI_AP,
         icon="mdi:wifi",
@@ -498,7 +498,7 @@ SENSORS: tuple[YsSensorDescription, ...] = (
         value_fn=lambda d: (_home(d).get("ap") or {}).get("name") or None,
     ),
     YsSensorDescription(
-        key="net_wifi_uplink_ssid",
+        key="wifi_uplink_ssid",
         name="SSID",
         group=DEV_WIFI_UPLINK,
         icon="mdi:wifi",
@@ -506,7 +506,7 @@ SENSORS: tuple[YsSensorDescription, ...] = (
         value_fn=_uplink_ssid,
     ),
     YsSensorDescription(
-        key="net_wifi_uplink_signal",
+        key="wifi_uplink_signal",
         name="Signal",
         group=DEV_WIFI_UPLINK,
         device_class=SensorDeviceClass.SIGNAL_STRENGTH,
@@ -515,7 +515,7 @@ SENSORS: tuple[YsSensorDescription, ...] = (
         value_fn=_uplink_signal,
     ),
     YsSensorDescription(
-        key="net_wifi_clients",
+        key="wifi_ap_clients",
         name="Clients",
         group=DEV_WIFI_AP,
         icon="mdi:devices",
@@ -594,7 +594,7 @@ SENSORS: tuple[YsSensorDescription, ...] = (
     ),
     # --- WiFi access point config ---
     YsSensorDescription(
-        key="net_wifi_ap_channel",
+        key="wifi_ap_channel",
         name="Channel",
         group=DEV_WIFI_AP,
         icon="mdi:wifi-settings",
@@ -602,7 +602,7 @@ SENSORS: tuple[YsSensorDescription, ...] = (
         value_fn=_channel,
     ),
     YsSensorDescription(
-        key="net_wifi_ap_security",
+        key="wifi_ap_security",
         name="Security",
         group=DEV_WIFI_AP,
         icon="mdi:wifi-lock",
@@ -610,7 +610,7 @@ SENSORS: tuple[YsSensorDescription, ...] = (
         value_fn=_security,
     ),
     YsSensorDescription(
-        key="net_wifi_ap_bandwidth",
+        key="wifi_ap_bandwidth",
         name="Bandwidth",
         group=DEV_WIFI_AP,
         icon="mdi:arrow-expand-horizontal",
@@ -735,14 +735,14 @@ SENSORS: tuple[YsSensorDescription, ...] = (
     YsSensorDescription(
         key="gnss_fix_type",
         name="Fix type",
-        group=DEV_GPS,
+        group=DEV_GNSS,
         icon="mdi:crosshairs-gps",
         value_fn=_fix_type,
     ),
     YsSensorDescription(
         key="gnss_satellites_used",
         name="Satellites in fix",
-        group=DEV_GPS,
+        group=DEV_GNSS,
         icon="mdi:satellite-variant",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda d: _sats(d, used_only=True),
@@ -750,7 +750,7 @@ SENSORS: tuple[YsSensorDescription, ...] = (
     YsSensorDescription(
         key="gnss_satellites_visible",
         name="Satellites in view",
-        group=DEV_GPS,
+        group=DEV_GNSS,
         icon="mdi:satellite-variant",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -759,7 +759,7 @@ SENSORS: tuple[YsSensorDescription, ...] = (
     YsSensorDescription(
         key="gnss_hdop",
         name="HDOP",
-        group=DEV_GPS,
+        group=DEV_GNSS,
         icon="mdi:crosshairs",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
@@ -768,7 +768,7 @@ SENSORS: tuple[YsSensorDescription, ...] = (
     YsSensorDescription(
         key="gnss_fix_age",
         name="Fix age",
-        group=DEV_GPS,
+        group=DEV_GNSS,
         icon="mdi:clock-alert-outline",
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.SECONDS,

@@ -89,7 +89,7 @@ DEV_CELLULAR: Final = "cellular"
 DEV_NETWORK: Final = "network"
 DEV_WIFI_AP: Final = "wifi_ap"
 DEV_WIFI_UPLINK: Final = "wifi_uplink"
-DEV_GPS: Final = "gps"
+DEV_GNSS: Final = "gnss"
 DEV_IO: Final = "io"
 
 # Cellular data volumes are reported in MB (a 3072 == 3 GB plan).

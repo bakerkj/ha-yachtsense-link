@@ -10,7 +10,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DEV_CELLULAR,
-    DEV_GPS,
+    DEV_GNSS,
     DEV_HUB,
     DEV_IO,
     DEV_NETWORK,
@@ -26,7 +26,7 @@ GROUP_LABELS: dict[str, str] = {
     DEV_NETWORK: "Network",
     DEV_WIFI_AP: "WiFi Access Point",
     DEV_WIFI_UPLINK: "WiFi Uplink",
-    DEV_GPS: "GPS",
+    DEV_GNSS: "GNSS",
     DEV_IO: "I/O",
 }
 
