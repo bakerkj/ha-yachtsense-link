@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.4](https://github.com/bakerkj/ha-yachtsense-link/compare/v0.0.3...v0.0.4) (2026-08-06)
+
+
+### Features
+
+* read position from the router's GNSS endpoint ([#17](https://github.com/bakerkj/ha-yachtsense-link/issues/17)) ([472ab7a](https://github.com/bakerkj/ha-yachtsense-link/commit/472ab7abb02d62ea1ee947c0c50ad0d6a110bfd2))
+
+
+### Miscellaneous Chores
+
+* **deps:** update github-actions ([#19](https://github.com/bakerkj/ha-yachtsense-link/issues/19)) ([4e02edf](https://github.com/bakerkj/ha-yachtsense-link/commit/4e02edf973541519347e5f64159eaf7c3b806cdb))
+
 ## [0.0.3](https://github.com/bakerkj/ha-yachtsense-link/compare/v0.0.2...v0.0.3) (2026-08-03)
 
 
