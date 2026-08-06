@@ -28,22 +28,24 @@ def _num(v: Any) -> float | None:
 def _position(d: dict[str, Any]) -> tuple[float | None, float | None]:
     """The vessel's position from the GNSS report, or (None, None).
 
-    There is deliberately no second source: anything without a timestamp cannot
-    be checked for having stopped updating, so reporting nothing is the safer
-    failure.
+    There is deliberately no second source: a position that cannot be checked
+    for having stopped updating is worse than none at all, so reporting nothing
+    is the safer failure.
     """
     report = d.get(DATA_GNSS)
     if not report:
         return None, None
-    # Fix 0 means the receiver has no solution; a report whose timestamp has
-    # stopped advancing is a frozen cache, which looks identical to a live fix
-    # in the payload itself. Both must read as "no position", not as a position.
     g = report.get("gnss") or {}
     if str(g.get("Fix", "0")) in GNSS_NO_FIX:
         return None, None
-    age = report.get("fix_age")
-    if isinstance(age, (int, float)) and age > GNSS_MAX_FIX_AGE:
-        return None, None
+    # Three independent ways a report can be old, none of which the payload
+    # distinguishes from a live fix on its own: the receiver stalled, nothing
+    # was read for a while, or what was read came from a backlog. Any one of
+    # them past the limit means there is no position worth publishing.
+    for key in ("fix_age", "report_age", "observation_lag"):
+        age = report.get(key)
+        if isinstance(age, (int, float)) and age > GNSS_MAX_FIX_AGE:
+            return None, None
     lat, lng = _num(g.get("Latitude")), _num(g.get("Longitude"))
     if lat is None or lng is None or (lat == 0.0 and lng == 0.0):
         return None, None
@@ -58,6 +60,14 @@ class YsDeviceTracker(YsEntity, TrackerEntity):
 
     def __init__(self, coordinator: Any) -> None:
         super().__init__(coordinator, DEV_GPS, "gps_position")
+        self._pos: tuple[float | None, float | None] = _position(coordinator.data or {})
+
+    def _handle_coordinator_update(self) -> None:
+        # Resolved once per update rather than once per coordinate, so latitude
+        # and longitude cannot disagree if a report expires between the two
+        # property reads.
+        self._pos = _position(self.coordinator.data or {})
+        super()._handle_coordinator_update()
 
     @property
     def source_type(self) -> SourceType:
@@ -65,11 +75,29 @@ class YsDeviceTracker(YsEntity, TrackerEntity):
 
     @property
     def latitude(self) -> float | None:
-        return _position(self.coordinator.data)[0]
+        return self._pos[0]
 
     @property
     def longitude(self) -> float | None:
-        return _position(self.coordinator.data)[1]
+        return self._pos[1]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Surface why a position is missing, which is otherwise invisible.
+
+        Each of these is a way the report can be too old to publish; without
+        them a blanked tracker gives no clue which one fired.
+        """
+        report = (self.coordinator.data or {}).get(DATA_GNSS) or {}
+        attrs: dict[str, Any] = {
+            key: round(value, 1)
+            for key in ("fix_age", "report_age", "observation_lag")
+            if isinstance(value := report.get(key), (int, float))
+        }
+        fix = (report.get("gnss") or {}).get("Fix")
+        if fix is not None:
+            attrs["fix"] = str(fix)
+        return attrs
 
 
 async def async_setup_entry(

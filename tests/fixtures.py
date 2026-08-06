@@ -193,6 +193,7 @@ LAN: dict[str, Any] = {
 
 
 # The GNSS endpoint reports every scalar as a string, including the booleans.
+# Fix 2 is a differential fix on this router, not a 2D one.
 GNSS: dict[str, Any] = {
     "responseTo": "getGnss",
     "state": True,
@@ -207,10 +208,30 @@ GNSS: dict[str, Any] = {
         "ModuleStatus": "True",
         "InternalGPSEnabled": "True",
         "EnableConstellations": ["GPS", "GALILEO", "GLONASS"],
+        # snrLastUpdateTimeMs is the receiver's observation counter (ms since
+        # module start); every entry carries the same value.
         "SatsInView": [
-            {"svId": "2", "snr": 48.0, "isUsedInFix": "True", "isTracked": "True"},
-            {"svId": "10", "snr": 52.0, "isUsedInFix": "True", "isTracked": "True"},
-            {"svId": "23", "snr": 31.0, "isUsedInFix": "False", "isTracked": "True"},
+            {
+                "svId": "2",
+                "snr": 48.0,
+                "isUsedInFix": "True",
+                "isTracked": "True",
+                "snrLastUpdateTimeMs": "93023211",
+            },
+            {
+                "svId": "10",
+                "snr": 52.0,
+                "isUsedInFix": "True",
+                "isTracked": "True",
+                "snrLastUpdateTimeMs": "93023211",
+            },
+            {
+                "svId": "23",
+                "snr": 31.0,
+                "isUsedInFix": "False",
+                "isTracked": "True",
+                "snrLastUpdateTimeMs": "93023211",
+            },
         ],
     },
 }

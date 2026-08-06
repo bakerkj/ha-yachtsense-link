@@ -16,13 +16,14 @@ private Raymarine CA, which matches neither the LAN IP it is reached on nor any
 public trust root.
 
 Position comes from a separate service: the router answers unauthenticated plain
-HTTP on port 9999 with fix type, DOP, per-satellite detail, and a timestamp that
-tracks the fix rather than the request. That timestamp is what makes a fix which
-has stopped updating detectable, so it is the only position source.
+HTTP on port 9999 with fix type, DOP and per-satellite detail. The per-satellite
+entries carry the receiver's own observation counter, which is what makes a fix
+that has stopped updating detectable, so this is the only position source.
 
 That endpoint intermittently answers 503 ``{"state": false}`` instead of a fix.
-It means "no data this instant", not "no fix", so a failure is retried once and
-otherwise carried forward rather than blanking the position.
+It means "no data this instant", not "no fix", so the last report is carried
+forward rather than blanking the position. Replies carry no request identifier,
+so a read is never retried -- see the coordinator for why.
 """
 
 from __future__ import annotations
@@ -61,6 +62,15 @@ class YsLockoutError(YsAuthError):
     """The router is rate-limiting logins; back off before retrying."""
 
 
+class YsUnreachableError(YsError):
+    """The request never reached the service, so nothing was left behind.
+
+    Distinguished from every other failure because it is the only one that is
+    free to retry: no connection means no reply was generated, so there is no
+    orphaned reply waiting to be handed to the next caller.
+    """
+
+
 def new_cookie_jar() -> aiohttp.CookieJar:
     """A cookie jar that keeps cookies for a bare-IP host.
 
@@ -78,6 +88,7 @@ class YachtSenseLinkApi:
         username: str,
         password: str,
         timeout: float = 10.0,
+        gnss_session: aiohttp.ClientSession | None = None,
     ) -> None:
         self._session = session
         self._host = host
@@ -89,13 +100,21 @@ class YachtSenseLinkApi:
         self._login_lock = asyncio.Lock()
         self._last_login_error: YsError | None = None
         self._last_login_at = 0.0
+        # The GNSS endpoint takes no credentials, so it gets its own session
+        # with a jar that stores and sends nothing. Sharing the main session
+        # would attach the admin cookie to every unauthenticated GNSS read.
+        self._gnss_session = gnss_session
+        self._owns_gnss_session = gnss_session is None
 
     @property
     def _base(self) -> str:
         return f"{self._scheme or 'https'}://{self._host}"
 
     async def aclose(self) -> None:
-        """Close the underlying HTTP session."""
+        """Close the underlying HTTP sessions."""
+        if self._owns_gnss_session and self._gnss_session is not None:
+            await self._gnss_session.close()
+            self._gnss_session = None
         await self._session.close()
 
     async def login(self) -> None:
@@ -202,18 +221,29 @@ class YachtSenseLinkApi:
 
         Plain HTTP on a fixed port, taking no session and no credentials, so
         this deliberately bypasses login() and the RPC endpoint. A 503 carries a
-        JSON body with ``state: false``; that is treated the same as a transport
-        error, leaving the caller to retry and then carry forward.
+        JSON body with ``state: false``; that is treated the same as a
+        transport error, leaving the caller to carry the last report forward.
         """
         host = urlsplit(f"//{self._host}").hostname or self._host
         url = f"http://{host}:{GNSS_PORT}{GNSS_PATH}"
+        if self._gnss_session is None:
+            self._gnss_session = aiohttp.ClientSession(
+                cookie_jar=aiohttp.DummyCookieJar()
+            )
         try:
-            async with self._session.get(
+            async with self._gnss_session.get(
                 url, timeout=aiohttp.ClientTimeout(total=GNSS_TIMEOUT)
             ) as resp:
                 doc = await resp.json(content_type=None)
+        # Must precede ClientError, of which it is a subclass: this is the only
+        # failure that never reached the service, and so the only retryable one.
+        except aiohttp.ClientConnectionError as exc:
+            raise YsUnreachableError(f"gnss: could not connect: {exc}") from exc
         except aiohttp.ClientError as exc:
             raise YsError(f"gnss: request failed: {exc}") from exc
+        # Our own deadline, set past the service's own. Hitting it means the
+        # request was accepted and a reply is already owed to us, so a retry
+        # would merely queue behind it.
         except TimeoutError as exc:
             raise YsError("gnss: request timed out") from exc
         except ValueError as exc:

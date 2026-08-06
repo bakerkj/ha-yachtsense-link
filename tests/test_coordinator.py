@@ -9,7 +9,11 @@ import pytest
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
-from custom_components.yachtsense_link.api import YsAuthError, YsError
+from custom_components.yachtsense_link.api import (
+    YsAuthError,
+    YsError,
+    YsUnreachableError,
+)
 from custom_components.yachtsense_link.const import (
     DATA_GNSS,
     DATA_HOME,
@@ -26,17 +30,6 @@ from .fixtures import GNSS, responses
 _UNSET = object()
 
 
-@pytest.fixture(autouse=True)
-def _fast_gnss_retry(monkeypatch):
-    """Don't spend the real inter-attempt wait in tests.
-
-    The spacing itself is covered by test_gnss_retry_is_spaced_from_the_start.
-    """
-    monkeypatch.setattr(
-        "custom_components.yachtsense_link.coordinator.GNSS_RETRY_DELAY", 0.0
-    )
-
-
 class FakeApi:
     def __init__(
         self,
@@ -46,6 +39,7 @@ class FakeApi:
         login_error=None,
         gnss=_UNSET,
         gnss_fail=0,
+        gnss_error=None,
     ):
         self.resp = resp
         self.fail_auth = set(fail_auth)
@@ -54,6 +48,7 @@ class FakeApi:
         self.gnss = GNSS if gnss is _UNSET else gnss
         # Number of leading get_gnss() calls that raise, to exercise the retry.
         self.gnss_fail = gnss_fail
+        self.gnss_error = gnss_error
         self.gnss_calls = 0
 
     async def login(self):
@@ -63,7 +58,7 @@ class FakeApi:
     async def get_gnss(self):
         self.gnss_calls += 1
         if self.gnss_calls <= self.gnss_fail or self.gnss is None:
-            raise YsError("gnss: no data")
+            raise (self.gnss_error or YsError)("gnss: no data")
         return self.gnss
 
     async def call(self, method, params=None):
@@ -205,19 +200,20 @@ async def test_gnss_is_merged_with_a_fix_age(hass):
     assert data[DATA_GNSS]["fix_age"] >= 0
 
 
-async def test_gnss_failure_is_retried_once(hass):
-    api = FakeApi(responses(), gnss_fail=1)
+async def test_gnss_is_read_exactly_once_per_cycle(hass):
+    # A second read would collect the first request's buffered reply rather
+    # than fresh data, and leave its own for the next cycle.
+    api = FakeApi(responses())
     coord = YachtSenseLinkCoordinator(hass, api, 60)
-    data = await coord._async_update_data()
-    assert api.gnss_calls == 2  # first failed, retry succeeded
-    assert data[DATA_GNSS]["gnss"]["Fix"] == "2"
+    await coord._async_update_data()
+    assert api.gnss_calls == 1
 
 
-async def test_gnss_gives_up_after_two_attempts(hass):
+async def test_a_failed_gnss_read_is_not_retried(hass):
     api = FakeApi(responses(), gnss=None)
     coord = YachtSenseLinkCoordinator(hass, api, 60)
     data = await coord._async_update_data()
-    assert api.gnss_calls == 2  # retried once, then stopped
+    assert api.gnss_calls == 1  # one read, then wait for the next cycle
     assert data[DATA_GNSS] is None
 
 
@@ -234,7 +230,7 @@ async def test_gnss_is_carried_forward_but_ages(hass):
     await coord._async_update_data()
 
     # Pretend the last good fix was seen a while ago, then lose the endpoint.
-    coord._gnss_stamp_at -= 120.0
+    coord._gnss_tick_at -= 120.0
     coord.api = FakeApi(responses(), gnss=None)
     data = await coord._async_update_data()
     # The position is still there, but it is no longer claiming to be fresh.
@@ -242,82 +238,135 @@ async def test_gnss_is_carried_forward_but_ages(hass):
     assert data[DATA_GNSS]["fix_age"] >= 120.0
 
 
-async def test_unchanged_timestamp_keeps_ageing(hass):
-    # A frozen cache answers every poll happily with the same timestamp; the
-    # age must keep climbing rather than resetting on each successful read.
+async def test_unchanged_counter_keeps_ageing(hass):
+    # A stalled receiver answers every poll happily, with a freshly stamped
+    # reply wrapped around an unchanged observation counter; the age must keep
+    # climbing rather than resetting on each successful read.
     coord = YachtSenseLinkCoordinator(hass, FakeApi(responses()), 60)
     await coord._async_update_data()
-    coord._gnss_stamp_at -= 200.0
+    coord._gnss_tick_at -= 200.0
     data = await coord._async_update_data()
     assert data[DATA_GNSS]["fix_age"] >= 200.0
 
 
-async def test_new_timestamp_resets_the_age(hass):
+async def test_a_new_counter_resets_the_age(hass):
     coord = YachtSenseLinkCoordinator(hass, FakeApi(responses()), 60)
     await coord._async_update_data()
-    coord._gnss_stamp_at -= 200.0
+    coord._gnss_tick_at -= 200.0
 
-    moved = {**GNSS, "timestamp": "2026-08-06T02:20:00Z"}
+    moved = {
+        **GNSS,
+        "gnss": {
+            **GNSS["gnss"],
+            "SatsInView": [
+                {**s, "snrLastUpdateTimeMs": "93999999"}
+                for s in GNSS["gnss"]["SatsInView"]
+            ],
+        },
+    }
     coord.api = FakeApi(responses(), gnss=moved)
     data = await coord._async_update_data()
     assert data[DATA_GNSS]["fix_age"] < 10.0
 
 
-async def test_gnss_retry_is_spaced_from_the_start(hass, monkeypatch):
-    # The wait is measured from when the first attempt began, not from when it
-    # failed: a slow failure has already used the interval up and is retried
-    # at once, while a fast one waits out the remainder instead of hammering.
-    monkeypatch.setattr(
-        "custom_components.yachtsense_link.coordinator.GNSS_RETRY_DELAY", 10.0
-    )
-    slept: list[float] = []
-
-    async def fake_sleep(delay):
-        slept.append(delay)
-
-    monkeypatch.setattr(
-        "custom_components.yachtsense_link.coordinator.asyncio.sleep", fake_sleep
-    )
-
-    clock = {"t": 1000.0}
-    monkeypatch.setattr(hass.loop, "time", lambda: clock["t"])
-
-    class SlowFailApi(FakeApi):
-        """First attempt fails only after most of the interval has elapsed."""
-
-        def __init__(self, resp, elapsed):
-            super().__init__(resp, gnss_fail=1)
-            self._elapsed = elapsed
-
-        async def get_gnss(self):
-            if self.gnss_calls == 0:
-                clock["t"] += self._elapsed
-            return await super().get_gnss()
-
-    coord = YachtSenseLinkCoordinator(hass, SlowFailApi(responses(), 9.0), 60)
-    await coord._async_update_data()
-    assert slept and slept[0] == pytest.approx(1.0, abs=0.5)
-
-    slept.clear()
-    coord = YachtSenseLinkCoordinator(hass, SlowFailApi(responses(), 0.0), 60)
-    await coord._async_update_data()
-    assert slept and slept[0] == pytest.approx(10.0, abs=0.5)
-
-
-async def test_gnss_retry_is_not_delayed_when_the_first_attempt_succeeds(
-    hass, monkeypatch
-):
-    monkeypatch.setattr(
-        "custom_components.yachtsense_link.coordinator.GNSS_RETRY_DELAY", 10.0
-    )
-    slept: list[float] = []
-
-    async def fake_sleep(delay):
-        slept.append(delay)
-
-    monkeypatch.setattr(
-        "custom_components.yachtsense_link.coordinator.asyncio.sleep", fake_sleep
-    )
+async def test_a_fresh_timestamp_does_not_hide_a_stalled_receiver(hass):
+    # The report's timestamp is stamped when the reply is composed, so it keeps
+    # advancing even while the position behind it is frozen. Liveness must come
+    # from the observation counter alone, or a stalled receiver reads as live.
     coord = YachtSenseLinkCoordinator(hass, FakeApi(responses()), 60)
     await coord._async_update_data()
-    assert slept == []  # happy path never waits
+    coord._gnss_tick_at -= 200.0
+
+    restamped = {**GNSS, "timestamp": "2026-08-06T09:99:99Z"}
+    coord.api = FakeApi(responses(), gnss=restamped)
+    data = await coord._async_update_data()
+    assert data[DATA_GNSS]["fix_age"] >= 200.0
+
+
+async def test_a_report_without_a_counter_does_not_blank_forever(hass):
+    # No counter means liveness is unknown, not stale. Reporting an age here
+    # would blank the position permanently on the very first poll.
+    stripped = {**GNSS, "gnss": {**GNSS["gnss"], "SatsInView": []}}
+    coord = YachtSenseLinkCoordinator(hass, FakeApi(responses(), gnss=stripped), 60)
+    data = await coord._async_update_data()
+    assert data[DATA_GNSS]["fix_age"] is None
+
+
+async def test_a_counterless_report_is_not_carried_forward_forever(hass):
+    # Without a counter there is no liveness clock, so nothing would ever age
+    # the report out. Repeated failed reads must still expire it.
+    stripped = {**GNSS, "gnss": {**GNSS["gnss"], "SatsInView": []}}
+    coord = YachtSenseLinkCoordinator(hass, FakeApi(responses(), gnss=stripped), 60)
+    first = await coord._async_update_data()
+    assert first[DATA_GNSS]["fix_age"] is None  # liveness unknown
+    assert first[DATA_GNSS]["report_age"] >= 0.0
+
+    coord._gnss_at -= 500.0
+    coord.api = FakeApi(responses(), gnss=None)
+    data = await coord._async_update_data()
+    assert data[DATA_GNSS]["report_age"] >= 500.0
+
+
+async def test_a_degraded_report_does_not_reset_an_expiring_fix(hass):
+    # A report that has lost its counter says nothing about liveness; letting
+    # it restart the clock would un-blank a position about to expire.
+    coord = YachtSenseLinkCoordinator(hass, FakeApi(responses()), 60)
+    await coord._async_update_data()
+    coord._gnss_tick_at -= 80.0
+
+    stripped = {**GNSS, "gnss": {**GNSS["gnss"], "SatsInView": []}}
+    coord.api = FakeApi(responses(), gnss=stripped)
+    data = await coord._async_update_data()
+    assert data[DATA_GNSS]["fix_age"] >= 80.0  # kept ageing, not reset
+
+
+async def test_backlogged_replies_are_caught_by_observation_lag(hass):
+    # A steady backlog hands back replies whose counter advances every poll, so
+    # they look fresh by every other measure. Only the gap between the counter
+    # and our own clock reveals that the observation itself is old.
+    coord = YachtSenseLinkCoordinator(hass, FakeApi(responses()), 60)
+    first = await coord._async_update_data()
+    assert first[DATA_GNSS]["observation_lag"] == pytest.approx(0.0, abs=1.0)
+
+    # Counter advanced, but by far less than the wall-clock time that passed.
+    coord._tick_offset -= 300.0
+    behind = {
+        **GNSS,
+        "gnss": {
+            **GNSS["gnss"],
+            "SatsInView": [
+                {**s, "snrLastUpdateTimeMs": "93024211"}
+                for s in GNSS["gnss"]["SatsInView"]
+            ],
+        },
+    }
+    coord.api = FakeApi(responses(), gnss=behind)
+    data = await coord._async_update_data()
+    assert data[DATA_GNSS]["observation_lag"] >= 290.0
+
+
+async def test_an_unreachable_gnss_read_is_retried(hass):
+    # Nothing reached the service, so no reply was generated and none was left
+    # waiting for the next caller: trying again costs nothing.
+    api = FakeApi(responses(), gnss_fail=1, gnss_error=YsUnreachableError)
+    coord = YachtSenseLinkCoordinator(hass, api, 60)
+    data = await coord._async_update_data()
+    assert api.gnss_calls == 2
+    assert data[DATA_GNSS]["gnss"]["Fix"] == "2"
+
+
+async def test_a_timed_out_gnss_read_is_not_retried(hass):
+    # The service took the request, so a reply is already owed to us; asking
+    # again would collect that stale reply and leave another in its place.
+    api = FakeApi(responses(), gnss_fail=1, gnss_error=YsError)
+    coord = YachtSenseLinkCoordinator(hass, api, 60)
+    await coord._async_update_data()
+    assert api.gnss_calls == 1
+
+
+async def test_unreachable_gives_up_after_two_attempts(hass):
+    api = FakeApi(responses(), gnss=None, gnss_error=YsUnreachableError)
+    coord = YachtSenseLinkCoordinator(hass, api, 60)
+    data = await coord._async_update_data()
+    assert api.gnss_calls == 2
+    assert data[DATA_GNSS] is None
