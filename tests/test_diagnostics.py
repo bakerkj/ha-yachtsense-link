@@ -19,7 +19,7 @@ from custom_components.yachtsense_link.diagnostics import (
     async_get_config_entry_diagnostics,
 )
 
-from .fixtures import CONNECTED, GPS, HOME, HUB
+from .fixtures import CONNECTED, GNSS, HOME, HUB
 
 
 async def test_diagnostics_redacts_sensitive_fields(hass):
@@ -36,7 +36,7 @@ async def test_diagnostics_redacts_sensitive_fields(hass):
     )
     entry.add_to_hass(hass)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = SimpleNamespace(
-        data={"home": HOME, "connected": CONNECTED, "hub": HUB, "gps": GPS}
+        data={"home": HOME, "connected": CONNECTED, "hub": HUB, "gnss": GNSS}
     )
 
     diag = await async_get_config_entry_diagnostics(hass, entry)
@@ -51,6 +51,8 @@ async def test_diagnostics_redacts_sensitive_fields(hass):
         "test-client-1",  # connected-device hostname (DName)
         "192.0.2.10",  # host / entry title
         "TestCarrier",  # cellular provider
+        "43.05803298950195",  # GNSS latitude
+        "-70.72698211669922",  # GNSS longitude
     ):
         assert secret not in blob, f"unredacted: {secret}"
     assert "**REDACTED**" in blob

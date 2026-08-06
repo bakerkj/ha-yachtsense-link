@@ -12,18 +12,39 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DATA_GPS, DEV_GPS, DOMAIN
+from .const import DATA_GNSS, DEV_GPS, DOMAIN, GNSS_MAX_FIX_AGE
 from .entity import YsEntity
 
 
 def _num(v: Any) -> float | None:
+    if isinstance(v, str):  # the GNSS report sends numbers as strings
+        try:
+            return float(v)
+        except ValueError:
+            return None
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
 
 def _position(d: dict[str, Any]) -> tuple[float | None, float | None]:
-    g = d.get(DATA_GPS) or {}
-    lat, lng = _num(g.get("lat")), _num(g.get("lng"))
-    # (0, 0) is the router's "no fix" value, not a real position.
+    """The vessel's position from the GNSS report, or (None, None).
+
+    There is deliberately no second source: anything without a timestamp cannot
+    be checked for having stopped updating, so reporting nothing is the safer
+    failure.
+    """
+    report = d.get(DATA_GNSS)
+    if not report:
+        return None, None
+    # Fix 0 means the receiver has no solution; a report whose timestamp has
+    # stopped advancing is a frozen cache, which looks identical to a live fix
+    # in the payload itself. Both must read as "no position", not as a position.
+    g = report.get("gnss") or {}
+    if str(g.get("Fix", "0")) == "0":
+        return None, None
+    age = report.get("fix_age")
+    if isinstance(age, (int, float)) and age > GNSS_MAX_FIX_AGE:
+        return None, None
+    lat, lng = _num(g.get("Latitude")), _num(g.get("Longitude"))
     if lat is None or lng is None or (lat == 0.0 and lng == 0.0):
         return None, None
     return lat, lng

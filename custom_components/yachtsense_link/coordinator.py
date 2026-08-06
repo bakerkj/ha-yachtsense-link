@@ -31,7 +31,7 @@ from .api import YachtSenseLinkApi, YsAuthError, YsError
 from .const import (
     DATA_APN,
     DATA_CONNECTED,
-    DATA_GPS,
+    DATA_GNSS,
     DATA_HOME,
     DATA_HUB,
     DATA_IO,
@@ -42,11 +42,11 @@ from .const import (
     DATA_UPGRADE,
     DATA_WLAN,
     DOMAIN,
+    GNSS_RETRY_DELAY,
     IO_READ_PARAMS,
     LAN_READ_PARAMS,
     METHOD_APN,
     METHOD_CONNECTED,
-    METHOD_GPS,
     METHOD_HOME,
     METHOD_HUB,
     METHOD_IO,
@@ -66,7 +66,6 @@ _CALLS: tuple[tuple[str, str, dict[str, Any] | None], ...] = (
     (DATA_MOBILE, METHOD_MOBILE, None),
     (DATA_HUB, METHOD_HUB, None),
     (DATA_CONNECTED, METHOD_CONNECTED, None),
-    (DATA_GPS, METHOD_GPS, None),
     (DATA_IO, METHOD_IO, IO_READ_PARAMS),
     (DATA_SELFCHECK, METHOD_SELFCHECK, None),
     (DATA_UPGRADE, METHOD_UPGRADE, None),
@@ -107,6 +106,48 @@ class YachtSenseLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._cycle = 0
         # Last-known config reads, carried forward between slow refreshes.
         self._slow: dict[str, Any] = {key: None for key, _m, _p in _SLOW_CALLS}
+        # Last good GNSS report, carried forward when a poll comes back empty.
+        self._gnss: dict[str, Any] | None = None
+        # Age is measured from when a *new* timestamp was first seen locally,
+        # not by subtracting the router's clock from ours: the two are set
+        # independently and a skew between them would otherwise be read as a
+        # stale fix (or hide a real one).
+        self._gnss_stamp: str | None = None
+        self._gnss_stamp_at: float = 0.0
+
+    async def _fetch_gnss(self) -> dict[str, Any] | None:
+        """Read the GNSS endpoint, retrying once, or None if both attempts fail.
+
+        The retry is spaced from the *start* of the first attempt so a slow
+        failure is retried promptly and a fast one waits out the remainder.
+        """
+        start = self.hass.loop.time()
+        for attempt in (1, 2):
+            try:
+                return await self.api.get_gnss()
+            except YsError as exc:
+                _LOGGER.debug("GNSS attempt %d failed: %s", attempt, exc)
+            if attempt == 1:
+                delay = GNSS_RETRY_DELAY - (self.hass.loop.time() - start)
+                if delay > 0:
+                    await asyncio.sleep(delay)
+        return None
+
+    def _merge_gnss(self, fresh: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Attach a locally-measured fix age, carrying forward on failure."""
+        now = self.hass.loop.time()
+        if fresh is not None:
+            stamp = fresh.get("timestamp")
+            if stamp != self._gnss_stamp:
+                self._gnss_stamp = stamp
+                self._gnss_stamp_at = now
+            self._gnss = fresh
+        if self._gnss is None:
+            return None
+        # A failed poll must not look like a fresh fix, and neither must a fix
+        # whose timestamp has stopped advancing: both are reported with an age
+        # so the consumer can decide, rather than being passed off as current.
+        return {**self._gnss, "fix_age": now - self._gnss_stamp_at}
 
     async def _async_update_data(self) -> dict[str, Any]:
         # Log in once up front so the concurrent calls below share the session.
@@ -122,9 +163,15 @@ class YachtSenseLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._cycle += 1
         calls = (*_CALLS, *_SLOW_CALLS) if slow_due else _CALLS
 
-        results = await asyncio.gather(
-            *(self.api.call(method, params) for _key, method, params in calls),
-            return_exceptions=True,
+        # The GNSS endpoint is a different service on a different port, so it
+        # runs alongside the RPC batch rather than after it: its retry must not
+        # add its wait to the cycle time.
+        results, gnss = await asyncio.gather(
+            asyncio.gather(
+                *(self.api.call(method, params) for _key, method, params in calls),
+                return_exceptions=True,
+            ),
+            self._fetch_gnss(),
         )
 
         data: dict[str, Any] = {}
@@ -160,6 +207,10 @@ class YachtSenseLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed("router returned no data on any call")
 
         data[DATA_THROUGHPUT] = self._throughput(data.get(DATA_MOBILE))
+        # Deliberately outside the failure accounting above: this endpoint is
+        # independent of the RPC session, so losing it is not a router-wide
+        # failure and must not fail the whole update.
+        data[DATA_GNSS] = self._merge_gnss(gnss)
         return data
 
     def _throughput(self, mobile: dict[str, Any] | None) -> dict[str, float] | None:

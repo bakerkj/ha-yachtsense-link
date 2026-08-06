@@ -12,7 +12,7 @@ from custom_components.yachtsense_link.binary_sensor import (
 from custom_components.yachtsense_link.const import (
     DATA_APN,
     DATA_CONNECTED,
-    DATA_GPS,
+    DATA_GNSS,
     DATA_HOME,
     DATA_HUB,
     DATA_IO,
@@ -22,13 +22,15 @@ from custom_components.yachtsense_link.const import (
     DATA_THROUGHPUT,
     DATA_UPGRADE,
     DATA_WLAN,
+    GNSS_MAX_FIX_AGE,
 )
+from custom_components.yachtsense_link.device_tracker import _position
 from custom_components.yachtsense_link.sensor import IO_VOLTAGE_SENSORS, SENSORS
 
 from .fixtures import (
     APN,
     CONNECTED,
-    GPS,
+    GNSS,
     HOME,
     HUB,
     IO,
@@ -46,7 +48,6 @@ def _merged() -> dict:
         DATA_MOBILE: MOBILE,
         DATA_HUB: HUB,
         DATA_CONNECTED: CONNECTED,
-        DATA_GPS: GPS,
         DATA_IO: IO,
         DATA_SELFCHECK: SELFCHECK,
         DATA_UPGRADE: UPGRADE,
@@ -54,6 +55,7 @@ def _merged() -> dict:
         DATA_APN: APN,
         DATA_LAN: LAN,
         DATA_THROUGHPUT: {"rate_mb_per_h": 123.4},
+        DATA_GNSS: {**GNSS, "fix_age": 4.0},
     }
 
 
@@ -180,3 +182,79 @@ def test_empty_data_is_safe():
         assert desc.value_fn({}) is None
     for desc in (*BINARY_SENSORS, *IO_SWITCH_SENSORS):
         assert desc.is_on_fn({}) is None
+
+
+# --- GNSS -------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [
+        ("gnss_fix_type", "2D"),
+        ("gnss_satellites_used", 2),  # two of three flagged isUsedInFix
+        ("gnss_satellites_visible", 3),
+        ("gnss_fix_age", 4.0),
+    ],
+)
+def test_gnss_sensor_values(key, expected):
+    assert _sensors()[key].value_fn(_merged()) == expected
+
+
+def test_gnss_hdop_value():
+    assert _sensors()["gnss_hdop"].value_fn(_merged()) == pytest.approx(0.48, abs=1e-3)
+
+
+def test_gnss_sensors_are_none_without_a_report():
+    data = {**_merged(), DATA_GNSS: None}
+    for key in ("gnss_fix_type", "gnss_satellites_used", "gnss_hdop", "gnss_fix_age"):
+        assert _sensors()[key].value_fn(data) is None
+
+
+# --- position ---------------------------------------------------------------
+
+
+def test_position_prefers_the_gnss_report():
+    lat, lng = _position(_merged())
+    assert (lat, lng) == pytest.approx((43.058032989, -70.726982116), abs=1e-6)
+
+
+def test_position_is_none_without_a_gnss_report():
+    data = {**_merged()}
+    del data[DATA_GNSS]
+    assert _position(data) == (None, None)
+
+
+def test_position_is_none_when_the_fix_is_stale():
+    stale = {**_merged(), DATA_GNSS: {**GNSS, "fix_age": GNSS_MAX_FIX_AGE + 1}}
+    assert _position(stale) == (None, None)
+
+
+def test_position_is_none_while_the_endpoint_is_down():
+    # There is no second source to fall back to, by design: reporting nothing
+    # beats reporting a position that may be hours old.
+    assert _position({**_merged(), DATA_GNSS: None}) == (None, None)
+
+
+def test_position_is_none_without_a_fix():
+    nofix = {
+        **_merged(),
+        DATA_GNSS: {**GNSS, "gnss": {**GNSS["gnss"], "Fix": "0"}, "fix_age": 1.0},
+    }
+    assert _position(nofix) == (None, None)
+
+
+def test_position_rejects_the_null_island_sentinel():
+    zeroed = {
+        **_merged(),
+        DATA_GNSS: {
+            **GNSS,
+            "gnss": {**GNSS["gnss"], "Latitude": "0.0", "Longitude": "0.0"},
+            "fix_age": 1.0,
+        },
+    }
+    assert _position(zeroed) == (None, None)
+
+
+def test_position_accepts_a_fix_just_inside_the_age_limit():
+    fresh = {**_merged(), DATA_GNSS: {**GNSS, "fix_age": GNSS_MAX_FIX_AGE - 1}}
+    assert _position(fresh) != (None, None)
