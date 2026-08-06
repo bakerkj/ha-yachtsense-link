@@ -12,7 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DATA_GNSS, DEV_GPS, DOMAIN, GNSS_MAX_FIX_AGE
+from .const import DATA_GNSS, DEV_GPS, DOMAIN, GNSS_MAX_FIX_AGE, GNSS_NO_FIX
 from .entity import YsEntity
 
 
@@ -39,7 +39,7 @@ def _position(d: dict[str, Any]) -> tuple[float | None, float | None]:
     # stopped advancing is a frozen cache, which looks identical to a live fix
     # in the payload itself. Both must read as "no position", not as a position.
     g = report.get("gnss") or {}
-    if str(g.get("Fix", "0")) == "0":
+    if str(g.get("Fix", "0")) in GNSS_NO_FIX:
         return None, None
     age = report.get("fix_age")
     if isinstance(age, (int, float)) and age > GNSS_MAX_FIX_AGE:

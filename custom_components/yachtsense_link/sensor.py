@@ -49,6 +49,7 @@ from .const import (
     DEV_WIFI_AP,
     DEV_WIFI_UPLINK,
     DOMAIN,
+    GNSS_NO_FIX,
 )
 from .entity import YsEntity
 
@@ -81,6 +82,14 @@ def _hub(d: dict[str, Any]) -> dict[str, Any]:
 
 def _gnss(d: dict[str, Any]) -> dict[str, Any]:
     return (d.get(DATA_GNSS) or {}).get("gnss") or {}
+
+
+def _fix_type(d: dict[str, Any]) -> str | None:
+    """Fix type, sharing GNSS_NO_FIX with the position check in device_tracker."""
+    raw = _gnss(d).get("Fix")
+    if raw is None:
+        return None
+    return "No fix" if str(raw) in GNSS_NO_FIX else _FIX_TYPES.get(str(raw))
 
 
 def _gnum(v: Any) -> float | None:
@@ -252,8 +261,8 @@ class YsSensorDescription(SensorEntityDescription):
     value_fn: Callable[[dict[str, Any]], StateType]
 
 
-# Fix values reported by the GNSS endpoint.
-_FIX_TYPES: dict[str, str] = {"0": "No fix", "1": "No fix", "2": "2D", "3": "3D"}
+# Solution dimensionality, for the values GNSS_NO_FIX does not already cover.
+_FIX_TYPES: dict[str, str] = {"2": "2D", "3": "3D"}
 
 _DATA: dict[str, Any] = {
     "device_class": SensorDeviceClass.DATA_SIZE,
@@ -730,7 +739,7 @@ SENSORS: tuple[YsSensorDescription, ...] = (
         name="Fix type",
         group=DEV_GPS,
         icon="mdi:crosshairs-gps",
-        value_fn=lambda d: _FIX_TYPES.get(str(_gnss(d).get("Fix", "")), None),
+        value_fn=_fix_type,
     ),
     YsSensorDescription(
         key="gnss_satellites_used",

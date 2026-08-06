@@ -61,6 +61,11 @@ GNSS_RETRY_DELAY: Final = 5.0
 # fix updates but below the default poll interval doubled, so an ordinary pause
 # cannot span two polls and trip it.
 GNSS_MAX_FIX_AGE: Final = 90.0
+# "Fix" values meaning the receiver has no solution. Follows the GSA
+# convention -- 1 = no fix, 2 = 2D, 3 = 3D -- with 0 covered defensively since
+# it is outside the convention. Shared so the position check and the fix-type
+# sensor cannot drift apart and disagree about whether a fix exists.
+GNSS_NO_FIX: Final = frozenset({"0", "1"})
 
 # Merged-data keys used by the coordinator and entities.
 DATA_HOME: Final = "home"

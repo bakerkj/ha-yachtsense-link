@@ -23,6 +23,7 @@ from custom_components.yachtsense_link.const import (
     DATA_UPGRADE,
     DATA_WLAN,
     GNSS_MAX_FIX_AGE,
+    GNSS_NO_FIX,
 )
 from custom_components.yachtsense_link.device_tracker import _position
 from custom_components.yachtsense_link.sensor import IO_VOLTAGE_SENSORS, SENSORS
@@ -235,12 +236,38 @@ def test_position_is_none_while_the_endpoint_is_down():
     assert _position({**_merged(), DATA_GNSS: None}) == (None, None)
 
 
-def test_position_is_none_without_a_fix():
+@pytest.mark.parametrize("fix", sorted(GNSS_NO_FIX))
+def test_position_is_none_without_a_fix(fix):
+    # Every no-fix value must suppress the position, not just "0": the payload
+    # still carries a stale Latitude/Longitude when the receiver has no
+    # solution, so a missed value here reports a position that does not exist.
     nofix = {
         **_merged(),
-        DATA_GNSS: {**GNSS, "gnss": {**GNSS["gnss"], "Fix": "0"}, "fix_age": 1.0},
+        DATA_GNSS: {**GNSS, "gnss": {**GNSS["gnss"], "Fix": fix}, "fix_age": 1.0},
     }
     assert _position(nofix) == (None, None)
+
+
+@pytest.mark.parametrize("fix", sorted(GNSS_NO_FIX))
+def test_fix_type_and_position_agree_on_no_fix(fix):
+    # The sensor and the tracker must never disagree about whether a fix
+    # exists; both read GNSS_NO_FIX so they cannot drift apart.
+    data = {
+        **_merged(),
+        DATA_GNSS: {**GNSS, "gnss": {**GNSS["gnss"], "Fix": fix}, "fix_age": 1.0},
+    }
+    assert _sensors()["gnss_fix_type"].value_fn(data) == "No fix"
+    assert _position(data) == (None, None)
+
+
+@pytest.mark.parametrize(("fix", "label"), [("2", "2D"), ("3", "3D")])
+def test_fix_type_and_position_agree_on_a_real_fix(fix, label):
+    data = {
+        **_merged(),
+        DATA_GNSS: {**GNSS, "gnss": {**GNSS["gnss"], "Fix": fix}, "fix_age": 1.0},
+    }
+    assert _sensors()["gnss_fix_type"].value_fn(data) == label
+    assert _position(data) != (None, None)
 
 
 def test_position_rejects_the_null_island_sentinel():
