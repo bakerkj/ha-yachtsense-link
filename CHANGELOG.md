@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.6](https://github.com/bakerkj/ha-yachtsense-link/compare/v0.0.5...v0.0.6) (2026-08-06)
+
+
+### Bug Fixes
+
+* stop retiring positions on a measure that only grows ([#24](https://github.com/bakerkj/ha-yachtsense-link/issues/24)) ([177bede](https://github.com/bakerkj/ha-yachtsense-link/commit/177bede631f638b3bcfeabc252f6d1b098d41533))
+
 ## [0.0.5](https://github.com/bakerkj/ha-yachtsense-link/compare/v0.0.4...v0.0.5) (2026-08-06)
 
 
