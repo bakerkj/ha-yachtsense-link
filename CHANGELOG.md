@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.7](https://github.com/bakerkj/ha-yachtsense-link/compare/v0.0.6...v0.0.7) (2026-08-06)
+
+
+### Code Refactoring
+
+* name entities after what they describe ([#26](https://github.com/bakerkj/ha-yachtsense-link/issues/26)) ([2687bab](https://github.com/bakerkj/ha-yachtsense-link/commit/2687babb15d707203f8bd25a5def8f4f3c6edf18))
+
 ## [0.0.6](https://github.com/bakerkj/ha-yachtsense-link/compare/v0.0.5...v0.0.6) (2026-08-06)
 
 
