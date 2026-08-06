@@ -28,22 +28,24 @@ def _num(v: Any) -> float | None:
 def _position(d: dict[str, Any]) -> tuple[float | None, float | None]:
     """The vessel's position from the GNSS report, or (None, None).
 
-    There is deliberately no second source: anything without a timestamp cannot
-    be checked for having stopped updating, so reporting nothing is the safer
-    failure.
+    There is deliberately no second source: a position that cannot be checked
+    for having stopped updating is worse than none at all, so reporting nothing
+    is the safer failure.
     """
     report = d.get(DATA_GNSS)
     if not report:
         return None, None
-    # Fix 0 means the receiver has no solution; a report whose timestamp has
-    # stopped advancing is a frozen cache, which looks identical to a live fix
-    # in the payload itself. Both must read as "no position", not as a position.
     g = report.get("gnss") or {}
     if str(g.get("Fix", "0")) in GNSS_NO_FIX:
         return None, None
-    age = report.get("fix_age")
-    if isinstance(age, (int, float)) and age > GNSS_MAX_FIX_AGE:
-        return None, None
+    # Three independent ways a report can be old, none of which the payload
+    # distinguishes from a live fix on its own: the receiver stalled, nothing
+    # was read for a while, or what was read came from a backlog. Any one of
+    # them past the limit means there is no position worth publishing.
+    for key in ("fix_age", "report_age", "observation_lag"):
+        age = report.get(key)
+        if isinstance(age, (int, float)) and age > GNSS_MAX_FIX_AGE:
+            return None, None
     lat, lng = _num(g.get("Latitude")), _num(g.get("Longitude"))
     if lat is None or lng is None or (lat == 0.0 and lng == 0.0):
         return None, None

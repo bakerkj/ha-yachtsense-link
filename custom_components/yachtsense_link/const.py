@@ -42,24 +42,19 @@ SLOW_EVERY: Final = 15
 
 # The router answers unauthenticated HTTP on this port with a detailed GNSS
 # report: fix type, DOP values, per-satellite detail and a timestamp that tracks
-# the fix rather than the request. The timestamp is the point -- it is what lets
-# a fix that has stopped updating be told apart from a current one.
+# the fix rather than the request. The per-satellite observation counter is the
+# point -- it is what lets a fix that has stopped updating be told apart from a
+# current one.
 GNSS_PORT: Final = 9999
 GNSS_PATH: Final = "/getGnss"
 # When it has no data to hand back the endpoint answers 503 after about five
 # seconds; allow a little past that so the failure is read rather than cut
-# short, while two attempts still fit inside MIN_UPDATE_INTERVAL.
+# short, while still fitting inside MIN_UPDATE_INTERVAL.
 GNSS_TIMEOUT: Final = 6.0
-# Retry delay measured from the *start* of the first attempt, so a slow 503
-# (which already consumed most of it) is retried promptly while a fast failure
-# such as connection-refused waits out the remainder instead of hammering.
-GNSS_RETRY_DELAY: Final = 5.0
-# A fix whose reported timestamp has not advanced for this long is treated as
-# stale rather than as a live position. Deliberately tight: reporting no
-# position costs little, whereas presenting a frozen one as live is the failure
-# this endpoint exists to avoid. Set above the endpoint's normal pauses between
-# fix updates but below the default poll interval doubled, so an ordinary pause
-# cannot span two polls and trip it.
+# How old a report may get, by any of the three measures the coordinator
+# attaches, before it stops counting as a live position. Deliberately tight:
+# reporting no position costs little, whereas presenting a frozen one as live is
+# the failure this endpoint exists to avoid.
 GNSS_MAX_FIX_AGE: Final = 90.0
 # "Fix" values meaning the receiver has no solution. This is NOT the GSA
 # convention: on this router 0 is no fix, 1 is an ordinary fix and 2 is a

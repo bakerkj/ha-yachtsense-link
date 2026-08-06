@@ -42,7 +42,6 @@ from .const import (
     DATA_UPGRADE,
     DATA_WLAN,
     DOMAIN,
-    GNSS_RETRY_DELAY,
     IO_READ_PARAMS,
     LAN_READ_PARAMS,
     METHOD_APN,
@@ -82,6 +81,13 @@ _SLOW_CALLS: tuple[tuple[str, str, dict[str, Any] | None], ...] = (
 # Distinct from None, which is a legitimate "the report carried no counter".
 _UNSEEN: Final = object()
 
+_TICK_FIELDS: Final = (
+    "snrLastUpdateTimeMs",
+    "isTrackedLastUpdateTimeMs",
+    "isUsedInFixLastUpdateTimeMs",
+    "elevationLastUpdateTimeMs",
+)
+
 
 def _module_tick(report: dict[str, Any]) -> int | None:
     """The receiver's observation counter, or None if the report lacks one.
@@ -96,10 +102,13 @@ def _module_tick(report: dict[str, Any]) -> int | None:
     for sat in sats:
         if not isinstance(sat, dict):
             continue
-        try:
-            ticks.append(int(sat["snrLastUpdateTimeMs"]))
-        except KeyError, TypeError, ValueError:
-            continue
+        # All four carry the same value; reading every one means a satellite
+        # that stops reporting SNR cannot hold the counter back on its own.
+        for field in _TICK_FIELDS:
+            try:
+                ticks.append(int(sat[field]))
+            except KeyError, TypeError, ValueError:
+                continue
     return max(ticks) if ticks else None
 
 
@@ -141,44 +150,71 @@ class YachtSenseLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # router's clock and ours.
         self._gnss_tick: Any = _UNSEEN
         self._gnss_tick_at: float = 0.0
+        # When a report was last read at all. The counter clock above can only
+        # age a report that carried a counter, so this one bounds every other
+        # case: without it a report lacking a counter would be republished
+        # unchanged for as long as reads kept failing.
+        self._gnss_at: float = 0.0
+        # Smallest observed difference between our clock and the receiver's
+        # counter, i.e. the least-delayed reply seen so far. Differencing two
+        # monotonic clocks leaves a constant offset, so this calibrates it
+        # without ever comparing the router's wall clock to ours.
+        self._tick_offset: float | None = None
 
     async def _fetch_gnss(self) -> dict[str, Any] | None:
-        """Read the GNSS endpoint, retrying once, or None if both attempts fail.
+        """Read the GNSS endpoint once, or None if the read fails.
 
-        The retry is spaced from the *start* of the first attempt so a slow
-        failure is retried promptly and a fast one waits out the remainder.
+        Deliberately not retried. Replies from this endpoint carry no request
+        identifier, so a read that times out still leaves its reply waiting to
+        be handed to whoever asks next. A retry therefore collects the timed-out
+        request's reply rather than a fresh one, and leaves its own behind for
+        the following cycle -- turning one missed read into a standing offset,
+        and adding another for every extra request that times out in its turn.
+        One read a cycle keeps that from compounding; a miss is carried forward
+        instead.
         """
-        start = self.hass.loop.time()
-        for attempt in (1, 2):
-            try:
-                return await self.api.get_gnss()
-            except YsError as exc:
-                _LOGGER.debug("GNSS attempt %d failed: %s", attempt, exc)
-            if attempt == 1:
-                delay = GNSS_RETRY_DELAY - (self.hass.loop.time() - start)
-                if delay > 0:
-                    await asyncio.sleep(delay)
-        return None
+        try:
+            return await self.api.get_gnss()
+        except YsError as exc:
+            _LOGGER.debug("GNSS read failed: %s", exc)
+            return None
 
     def _merge_gnss(self, fresh: dict[str, Any] | None) -> dict[str, Any] | None:
         """Attach a locally-measured fix age, carrying forward on failure."""
         now = self.hass.loop.time()
         if fresh is not None:
-            tick = _module_tick(fresh)
-            if tick != self._gnss_tick:
-                self._gnss_tick = tick
-                self._gnss_tick_at = now
             self._gnss = fresh
+            self._gnss_at = now
+            tick = _module_tick(fresh)
+            # A report that has lost its counter says nothing about liveness,
+            # so it must not restart the counter clock -- otherwise a single
+            # degraded report un-blanks a position that was about to expire.
+            if tick is not None:
+                offset = now - tick / 1000.0
+                if self._tick_offset is None or offset < self._tick_offset:
+                    self._tick_offset = offset
+                if tick != self._gnss_tick:
+                    self._gnss_tick = tick
+                    self._gnss_tick_at = now
         if self._gnss is None:
             return None
-        # A failed poll must not look like a fresh fix, and neither must a
-        # report whose observation counter has stopped moving: both are
-        # reported with an age so the consumer can decide, rather than being
-        # passed off as current. An age of None means the counter was absent,
-        # so liveness is simply unknown -- report the fix rather than blank it
-        # on a measurement we never took.
-        stale = self._gnss_tick is _UNSEEN or self._gnss_tick is None
-        return {**self._gnss, "fix_age": None if stale else now - self._gnss_tick_at}
+        seen = self._gnss_tick is not _UNSEEN and self._gnss_tick is not None
+        return {
+            **self._gnss,
+            # Counter stopped moving: the receiver has stalled.
+            "fix_age": (now - self._gnss_tick_at) if seen else None,
+            # Nothing read at all: the report is simply old. Always a number,
+            # so carrying a report forward can never be unbounded.
+            "report_age": now - self._gnss_at,
+            # How far behind the observation itself is, which is the only one
+            # of the three that catches replies served from a backlog: those
+            # carry a counter that advances every poll and so look fresh.
+            "observation_lag": (
+                (now - self._gnss_tick / 1000.0) - self._tick_offset
+                if seen and self._tick_offset is not None
+                else None
+            ),
+        }
 
     async def _async_update_data(self) -> dict[str, Any]:
         # Log in once up front so the concurrent calls below share the session.
