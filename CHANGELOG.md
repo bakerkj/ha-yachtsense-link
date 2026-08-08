@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.8](https://github.com/bakerkj/ha-yachtsense-link/compare/v0.0.7...v0.0.8) (2026-08-08)
+
+
+### Miscellaneous Chores
+
+* **deps:** update dependency uv to v0.12.3 ([#28](https://github.com/bakerkj/ha-yachtsense-link/issues/28)) ([c87df68](https://github.com/bakerkj/ha-yachtsense-link/commit/c87df685b46b6718ae2158e8066236e076170d68))
+
 ## [0.0.7](https://github.com/bakerkj/ha-yachtsense-link/compare/v0.0.6...v0.0.7) (2026-08-06)
 
 
