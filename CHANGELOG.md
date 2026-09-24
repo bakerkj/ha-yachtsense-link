@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.0.8](https://github.com/bakerkj/ha-yachtsense-link/compare/v0.0.7...v0.0.8) (2026-09-24)
+
+
+### Bug Fixes
+
+* **renovate:** don't duplicate runs-on detection with the built-in manager ([#55](https://github.com/bakerkj/ha-yachtsense-link/issues/55)) ([242a4ee](https://github.com/bakerkj/ha-yachtsense-link/commit/242a4ee5aaeac8f56c715159b48f328cfb9a38fb))
+
+
+### Miscellaneous Chores
+
+* **deps:** update anthropics/claude-code-action action to v1.0.190 ([#31](https://github.com/bakerkj/ha-yachtsense-link/issues/31)) ([93e4675](https://github.com/bakerkj/ha-yachtsense-link/commit/93e46754e47f99ff712d508b4ca3002192ac199b))
+* **deps:** update anthropics/claude-code-action action to v1.0.191 ([#33](https://github.com/bakerkj/ha-yachtsense-link/issues/33)) ([bff9460](https://github.com/bakerkj/ha-yachtsense-link/commit/bff946057eeb419b8aa609b6ddfc9a30421a533c))
+* **deps:** update anthropics/claude-code-action action to v1.0.194 ([#34](https://github.com/bakerkj/ha-yachtsense-link/issues/34)) ([662acda](https://github.com/bakerkj/ha-yachtsense-link/commit/662acdaec04fd8270a94a97c2cf15895cab5daf6))
+* **deps:** update anthropics/claude-code-action action to v1.0.204 ([#38](https://github.com/bakerkj/ha-yachtsense-link/issues/38)) ([2ca1fd0](https://github.com/bakerkj/ha-yachtsense-link/commit/2ca1fd05145f4996ed7615267dc493e7c5bb0352))
+* **deps:** update anthropics/claude-code-action action to v1.0.205 ([#39](https://github.com/bakerkj/ha-yachtsense-link/issues/39)) ([a4cd86d](https://github.com/bakerkj/ha-yachtsense-link/commit/a4cd86da22ced9a310f40d51375ff95343b5345b))
+* **deps:** update anthropics/claude-code-action action to v1.0.211 ([#45](https://github.com/bakerkj/ha-yachtsense-link/issues/45)) ([1be3c27](https://github.com/bakerkj/ha-yachtsense-link/commit/1be3c274926cb08028f8d28e8506330cde6bf9ee))
+* **deps:** update anthropics/claude-code-action action to v1.0.212 ([#46](https://github.com/bakerkj/ha-yachtsense-link/issues/46)) ([88d404d](https://github.com/bakerkj/ha-yachtsense-link/commit/88d404d007d67384fbe93b9c7cb5e455b1fb4d57))
+* **deps:** update anthropics/claude-code-action action to v1.0.217 ([#48](https://github.com/bakerkj/ha-yachtsense-link/issues/48)) ([eb9ef61](https://github.com/bakerkj/ha-yachtsense-link/commit/eb9ef61e1cb7325f9588070916aa4ff30396167e))
+* **deps:** update anthropics/claude-code-action action to v1.0.218 ([#49](https://github.com/bakerkj/ha-yachtsense-link/issues/49)) ([35e39f1](https://github.com/bakerkj/ha-yachtsense-link/commit/35e39f14e05139275649e7504b0e52193ff86166))
+* **deps:** update anthropics/claude-code-action action to v1.0.226 ([#60](https://github.com/bakerkj/ha-yachtsense-link/issues/60)) ([631fe8a](https://github.com/bakerkj/ha-yachtsense-link/commit/631fe8a7814a421215c6b40fc0550747e9c92c2b))
+* **deps:** update astral-sh/setup-uv action to v10 ([#32](https://github.com/bakerkj/ha-yachtsense-link/issues/32)) ([46c6055](https://github.com/bakerkj/ha-yachtsense-link/commit/46c6055ec5db275d88afe112bee1835fc153c05f))
+* **deps:** update astral-sh/setup-uv action to v10.2.0 ([#64](https://github.com/bakerkj/ha-yachtsense-link/issues/64)) ([1402d34](https://github.com/bakerkj/ha-yachtsense-link/commit/1402d344e32a06343f7e4fee30a75aa74a6dbab0))
+* **deps:** update dependency ubuntu to v26 ([#57](https://github.com/bakerkj/ha-yachtsense-link/issues/57)) ([77461bb](https://github.com/bakerkj/ha-yachtsense-link/commit/77461bb87e7619111cf327b17e1ad677b17a6569))
+* **deps:** update dependency uv to v0.12.10 ([#47](https://github.com/bakerkj/ha-yachtsense-link/issues/47)) ([7107b8c](https://github.com/bakerkj/ha-yachtsense-link/commit/7107b8c2bf92c0754bdf66acb2cb202ff2350f9e))
+* **deps:** update dependency uv to v0.12.11 ([#50](https://github.com/bakerkj/ha-yachtsense-link/issues/50)) ([27951f6](https://github.com/bakerkj/ha-yachtsense-link/commit/27951f63af166bafa412f193f3cc3804c5e5628d))
+* **deps:** update dependency uv to v0.12.14 ([#51](https://github.com/bakerkj/ha-yachtsense-link/issues/51)) ([9ca08f5](https://github.com/bakerkj/ha-yachtsense-link/commit/9ca08f5bc520e6ebc651e440c18ae4f121a2c5e9))
+* **deps:** update dependency uv to v0.12.15 ([#53](https://github.com/bakerkj/ha-yachtsense-link/issues/53)) ([863d794](https://github.com/bakerkj/ha-yachtsense-link/commit/863d794e0c5e9b6c34c82929157ba98081e31a32))
+* **deps:** update dependency uv to v0.12.17 ([#58](https://github.com/bakerkj/ha-yachtsense-link/issues/58)) ([0d69ec3](https://github.com/bakerkj/ha-yachtsense-link/commit/0d69ec3133901877065c22e03d678264c5d5817a))
+* **deps:** update dependency uv to v0.12.18 ([#66](https://github.com/bakerkj/ha-yachtsense-link/issues/66)) ([e8267b2](https://github.com/bakerkj/ha-yachtsense-link/commit/e8267b2730e8ab68e9887875b5c6fa62a59d8f4d))
+* **deps:** update dependency uv to v0.12.3 ([#28](https://github.com/bakerkj/ha-yachtsense-link/issues/28)) ([c87df68](https://github.com/bakerkj/ha-yachtsense-link/commit/c87df685b46b6718ae2158e8066236e076170d68))
+* **deps:** update dependency uv to v0.12.5 ([#35](https://github.com/bakerkj/ha-yachtsense-link/issues/35)) ([b92a320](https://github.com/bakerkj/ha-yachtsense-link/commit/b92a32064d8c0af7dfa3867c8b33953cb3a910b9))
+* **deps:** update dependency uv to v0.12.7 ([#40](https://github.com/bakerkj/ha-yachtsense-link/issues/40)) ([a7dceae](https://github.com/bakerkj/ha-yachtsense-link/commit/a7dceaefb4bbf611e2e2618ac333e12b204e574e))
+* **deps:** update dependency uv to v0.12.8 ([#42](https://github.com/bakerkj/ha-yachtsense-link/issues/42)) ([28dade4](https://github.com/bakerkj/ha-yachtsense-link/commit/28dade46cab97cbd91248daee236e3784d675763))
+* **deps:** update dependency uv to v0.12.9 ([#43](https://github.com/bakerkj/ha-yachtsense-link/issues/43)) ([371aad2](https://github.com/bakerkj/ha-yachtsense-link/commit/371aad2cf90c777a255ab921d007d3a587309323))
+* **deps:** update github-actions ([#52](https://github.com/bakerkj/ha-yachtsense-link/issues/52)) ([7ee32b3](https://github.com/bakerkj/ha-yachtsense-link/commit/7ee32b3cd8b6600994489ecebb60155f87e186e6))
+* **deps:** update github-actions ([#62](https://github.com/bakerkj/ha-yachtsense-link/issues/62)) ([159a373](https://github.com/bakerkj/ha-yachtsense-link/commit/159a3734db1566cf34caeb8202c1d9d6fe9beb05))
+* **deps:** update pre-commit hook alessandrojcm/commitlint-pre-commit-hook to v9.27.0 ([#63](https://github.com/bakerkj/ha-yachtsense-link/issues/63)) ([0281fd5](https://github.com/bakerkj/ha-yachtsense-link/commit/0281fd5329e5c73229312ba6d879ec42ea3ef90e))
+* **deps:** update pre-commit hook astral-sh/ruff-pre-commit to v0.16.2 ([#29](https://github.com/bakerkj/ha-yachtsense-link/issues/29)) ([afd13e7](https://github.com/bakerkj/ha-yachtsense-link/commit/afd13e795be53c6689ddfe8f61064edcdb313046))
+* **deps:** update pre-commit hook astral-sh/ruff-pre-commit to v0.16.3 ([#36](https://github.com/bakerkj/ha-yachtsense-link/issues/36)) ([07b9774](https://github.com/bakerkj/ha-yachtsense-link/commit/07b9774be254e7d86bb9710b9af428c750539beb))
+* **deps:** update pre-commit hook astral-sh/ruff-pre-commit to v0.16.4 ([#37](https://github.com/bakerkj/ha-yachtsense-link/issues/37)) ([6be9009](https://github.com/bakerkj/ha-yachtsense-link/commit/6be90097f2bf96425398f35c1e6f6f5f4264385c))
+* **deps:** update pre-commit hook astral-sh/ruff-pre-commit to v0.16.5 ([#41](https://github.com/bakerkj/ha-yachtsense-link/issues/41)) ([0a1fab7](https://github.com/bakerkj/ha-yachtsense-link/commit/0a1fab7df9287dfc5f23006dd568f68dd3911ccb))
+* **deps:** update pre-commit hook astral-sh/ruff-pre-commit to v0.16.6 ([#44](https://github.com/bakerkj/ha-yachtsense-link/issues/44)) ([9e20255](https://github.com/bakerkj/ha-yachtsense-link/commit/9e2025598556477b90d3e29eebc6753c066f2d72))
+* **deps:** update pre-commit hook astral-sh/ruff-pre-commit to v0.16.7 ([#54](https://github.com/bakerkj/ha-yachtsense-link/issues/54)) ([633e021](https://github.com/bakerkj/ha-yachtsense-link/commit/633e021da6e766f0616b25d3c1c270db204ed55d))
+* **deps:** update pre-commit hook rbubley/mirrors-prettier to v3.9.7 ([#59](https://github.com/bakerkj/ha-yachtsense-link/issues/59)) ([231ea81](https://github.com/bakerkj/ha-yachtsense-link/commit/231ea8140357b1c131f1bdbd00f88cb3f97ea265))
+* **deps:** update pre-commit hooks ([#61](https://github.com/bakerkj/ha-yachtsense-link/issues/61)) ([a90e431](https://github.com/bakerkj/ha-yachtsense-link/commit/a90e43144f68ad342c22e3ce49d95b1f5cd9ca8c))
+* **deps:** update pre-commit hooks ([#65](https://github.com/bakerkj/ha-yachtsense-link/issues/65)) ([9d4a46f](https://github.com/bakerkj/ha-yachtsense-link/commit/9d4a46f9adc5fa18b8cb673ec27625430aa0446e))
+* switch actionlint pre-commit hook from rhysd (stale) to kjanat fork ([#56](https://github.com/bakerkj/ha-yachtsense-link/issues/56)) ([d507305](https://github.com/bakerkj/ha-yachtsense-link/commit/d507305ca77c3aa7060967b79a71270b707373a3))
+
 ## [0.0.7](https://github.com/bakerkj/ha-yachtsense-link/compare/v0.0.6...v0.0.7) (2026-08-06)
 
 
