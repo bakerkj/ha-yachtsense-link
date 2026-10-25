@@ -51,5 +51,8 @@ class YsEntity(CoordinatorEntity[YachtSenseLinkCoordinator]):
             model="YachtSense Link",
         )
         if group_id != DEV_HUB:
-            info["via_device"] = hub_ident
+            # HA 2026.10 dropped via_device from the DeviceInfo type in favour of
+            # via_device_id (a registry id); the old key still works but is
+            # deprecated and removed in HA 2027.8, so this must move before then.
+            info["via_device"] = hub_ident  # type: ignore[typeddict-unknown-key]
         self._attr_device_info = info
